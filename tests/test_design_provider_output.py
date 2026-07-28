@@ -235,6 +235,20 @@ def test_final_contract_normalization_aligns_tier_c_and_workflow() -> None:
     assert value["tier_c"][0]["evidence_contract"]["required_kinds"] == ["artifact", "user_confirmation"]
 
 
+def test_final_contract_normalization_preserves_legacy_workflow_order() -> None:
+    value = normalize_design_execution_contract({
+        "schema_version": "1.1",
+        "workflow": {"stages": []},
+        "tier_c": [],
+        "verification": [],
+    })
+
+    assert value["workflow"]["stages"] == [
+        "preflight", "design", "approval", "bind", "subsystems",
+        "tier_c", "integration", "closure", "release",
+    ]
+
+
 def test_repair_slice_exposes_only_rows_named_by_diagnostics() -> None:
     value = _repair_contract_slice({
         "project": "crumb",

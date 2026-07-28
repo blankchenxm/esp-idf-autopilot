@@ -102,6 +102,10 @@ _REQUIRED_WORKFLOW_STAGES = [
     "preflight", "design", "approval", "bind", "subsystems", "integration",
     "tier_c", "closure", "release",
 ]
+_LEGACY_WORKFLOW_STAGES = [
+    "preflight", "design", "approval", "bind", "subsystems", "tier_c",
+    "integration", "closure", "release",
+]
 
 
 def normalize_design_execution_contract(contract: dict[str, Any]) -> dict[str, Any]:
@@ -115,7 +119,12 @@ def normalize_design_execution_contract(contract: dict[str, Any]) -> dict[str, A
     an initial provider draft and a repair draft after preservation/merging.
     """
     contract = copy.deepcopy(contract)
-    contract["workflow"] = {"stages": list(_REQUIRED_WORKFLOW_STAGES)}
+    workflow_stages = (
+        _LEGACY_WORKFLOW_STAGES
+        if contract.get("schema_version") in {"1.0", "1.1"}
+        else _REQUIRED_WORKFLOW_STAGES
+    )
+    contract["workflow"] = {"stages": list(workflow_stages)}
     tier_c = {
         str(item.get("test_id")): item
         for item in contract.get("tier_c", [])
