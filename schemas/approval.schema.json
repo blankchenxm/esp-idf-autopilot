@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://esp-autodev.local/schemas/approval-1.0.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "spec_revision", "design_digest", "approved_by", "approved_at", "unresolved_policy_items", "pending_tier_c_items"],
+  "properties": {
+    "schema_version": {"const": "1.0"}, "project_id": {"type": "string"}, "status": {"enum": ["PENDING", "APPROVED", "REJECTED"]},
+    "spec_revision": {"type": "integer", "minimum": 1}, "design_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "approved_by": {"type": ["string", "null"]}, "approved_at": {"type": ["string", "null"]},
+    "unresolved_policy_items": {"type": "array"}, "pending_tier_c_items": {"type": "array"},
+    "approval_basis": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"enum": ["user", "delegated_grounding"]},
+        "policy_path": {"type": "string"},
+        "policy_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "source_revision": {"type": "integer", "minimum": 1},
+        "source_design_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

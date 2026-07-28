@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://esp-autodev.local/schemas/manifest-1.0.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "revision", "inputs", "providers", "files", "design_digest"],
+  "properties": {
+    "schema_version": {"const": "1.0"}, "project_id": {"type": "string"}, "revision": {"type": "integer", "minimum": 1},
+    "inputs": {"type": "array", "items": {"$ref": "artifact-ref.schema.json"}},
+    "providers": {"type": "array", "items": {"$ref": "#/$defs/provider"}},
+    "files": {"type": "array", "items": {"$ref": "artifact-ref.schema.json"}},
+    "design_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "provider": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {"type": "string"},
+        "receipt_id": {"type": "string"},
+        "receipt_ref": {"$ref": "artifact-ref.schema.json"}
+      },
+      "allOf": [{"if": {"required": ["receipt_id"]}, "then": {"required": ["receipt_ref"]}}],
+      "additionalProperties": true
+    }
+  }
+}

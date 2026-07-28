@@ -1,0 +1,155 @@
+{
+  "schema_version": "1.0",
+  "project_id": "hm01b0_st7789",
+  "revision": 1,
+  "inputs": [
+    {
+      "path": "requirements/hm01b0_st7789.md",
+      "sha256": "6811079f2d1f82aa4767f5df605afa7cda6f4c4eb925c0af73dcf4d6cac8adc5",
+      "size": 1103,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "connections/hm01b0_st7789.md",
+      "sha256": "ee8d1499d24bd1d7f7eee3c579a84c637bf9625f3c9e08b255a503c139cab3ce",
+      "size": 963,
+      "media_type": "text/markdown"
+    }
+  ],
+  "providers": [
+    {
+      "schema_version": "1.0",
+      "project": "hm01b0_st7789",
+      "selections": [
+        {
+          "subsystem_id": "hm01b0_driver",
+          "part_number": "HM01B0-MWA",
+          "registry_search_required": true,
+          "exact_search": "HM01B0-MWA",
+          "capability_search": "ESP-IDF HM01B0 monochrome camera parallel DVP driver frame capture",
+          "final_decision": "custom",
+          "selected_component": null,
+          "provider_receipt_id": "registry-grounding-required",
+          "required_operations": [
+            "initialize",
+            "identify",
+            "configure_mode",
+            "start_capture",
+            "read_frame",
+            "report_status",
+            "reset_recovery"
+          ]
+        },
+        {
+          "subsystem_id": "st7789_driver",
+          "part_number": "ST7789",
+          "registry_search_required": true,
+          "exact_search": "ST7789",
+          "capability_search": "ESP-IDF ST7789 SPI LCD RGB565 DMA display driver",
+          "final_decision": "custom",
+          "selected_component": null,
+          "provider_receipt_id": "registry-grounding-required",
+          "required_operations": [
+            "initialize",
+            "configure_orientation",
+            "set_address_window",
+            "write_pixels",
+            "report_status",
+            "reset_recovery"
+          ]
+        }
+      ],
+      "datasheet_grounding": [
+        {
+          "subsystem_id": "hm01b0_driver",
+          "part_number": "HM01B0-MWA",
+          "required_level": "L1",
+          "status": "required"
+        },
+        {
+          "subsystem_id": "st7789_driver",
+          "part_number": "ST7789",
+          "required_level": "L1",
+          "status": "required"
+        }
+      ],
+      "kind": "design-generator"
+    },
+    {
+      "kind": "local_idf",
+      "subsystem_id": "board_resources",
+      "receipt_id": "design-provider-a153372dd4ec41ea",
+      "receipt_ref": {
+        "path": "projects/hm01b0_st7789/execution/receipts/design/design-provider-a153372dd4ec41ea.json",
+        "sha256": "11cf0bfb1e5f669811cb8d88ffd3229779a1e3341c38424f668c028e83d8e785",
+        "size": 1335,
+        "media_type": "application/json"
+      }
+    },
+    {
+      "kind": "registry",
+      "subsystem_id": "hm01b0_driver",
+      "receipt_id": "design-provider-9d9f8d0bcdc248e1",
+      "receipt_ref": {
+        "path": "projects/hm01b0_st7789/execution/receipts/design/design-provider-9d9f8d0bcdc248e1.json",
+        "sha256": "16c1e3731e6f83bfcc5015c8bad3f2b7996e190f4a74ede68fd6da4eedbc41d5",
+        "size": 1371,
+        "media_type": "application/json"
+      }
+    },
+    {
+      "kind": "registry",
+      "subsystem_id": "st7789_driver",
+      "receipt_id": "design-provider-dbb6caad94164128",
+      "receipt_ref": {
+        "path": "projects/hm01b0_st7789/execution/receipts/design/design-provider-dbb6caad94164128.json",
+        "sha256": "b39142996efa815dcc412e6b7a36a9bed4420b84886e34b6066b0e5b9d3a2842",
+        "size": 708849,
+        "media_type": "application/json"
+      }
+    },
+    {
+      "kind": "datasheet",
+      "subsystem_id": "hm01b0_driver",
+      "receipt_id": "design-provider-c1bdee0e4cd0461a",
+      "receipt_ref": {
+        "path": "projects/hm01b0_st7789/execution/receipts/design/design-provider-c1bdee0e4cd0461a.json",
+        "sha256": "990ef78d21261a58e495fcc426a8c3b30f5c270eaa67a1b1ab0d0c8c2d7ac127",
+        "size": 113306,
+        "media_type": "application/json"
+      }
+    },
+    {
+      "kind": "datasheet",
+      "subsystem_id": "st7789_driver",
+      "receipt_id": "design-provider-833020c927e0442d",
+      "receipt_ref": {
+        "path": "projects/hm01b0_st7789/execution/receipts/design/design-provider-833020c927e0442d.json",
+        "sha256": "d06b8c48ef0a38ea462f5a77508b70db4e786bf2528f890a429ac7c44a82add5",
+        "size": 28557,
+        "media_type": "application/json"
+      }
+    }
+  ],
+  "files": [
+    {
+      "path": "spec.md",
+      "sha256": "db58b7c9dd9ac6703e3de9ea369d154a12459d7025f76793b5138d51ac238782",
+      "size": 2402,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "execution-contract.json",
+      "sha256": "69965a622dd5524410aee7cd2affd6668891cb424cf4cbc5c93c4b3d1e421ed9",
+      "size": 751673,
+      "media_type": "application/json"
+    },
+    {
+      "path": "input-authority.json",
+      "sha256": "329f26e5e83a307d3ee139f3b2ae33f729c0f813b627c4ae9d98357e91c6c04e",
+      "size": 4555,
+      "media_type": "application/json"
+    }
+  ],
+  "design_digest": "f000e0d07118365c13a0aec6f6c187f44ff666824c43675c061e10f5140d98c6"
+}

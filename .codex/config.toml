@@ -1,0 +1,39 @@
+# Project-scoped Codex configuration.
+# This file is loaded only when the repository is trusted.
+
+[mcp_servers.esp-component-registry]
+enabled = true
+url = "https://components.espressif.com/mcp"
+default_tools_approval_mode = "approve"
+http_headers = { "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36", "Accept-Language" = "en-US,en;q=0.9" }
+startup_timeout_sec = 30
+tool_timeout_sec = 60
+
+[mcp_servers.esp-serial]
+enabled = true
+# Resolve Python from the active shell/virtual environment.  Users who do not
+# expose Python on PATH can override this in their uncommitted local config.
+command = "python"
+args = ["serial_mcp.py"]
+default_tools_approval_mode = "approve"
+startup_timeout_sec = 30
+tool_timeout_sec = 60
+
+[mcp_servers.esp-serial.tools.monitor_boot]
+approval_mode = "approve"
+
+[mcp_servers.esp-serial.tools.monitor_start]
+approval_mode = "approve"
+
+[mcp_servers.esp-serial.tools.monitor_read]
+approval_mode = "approve"
+
+[mcp_servers.esp-serial.tools.monitor_stop]
+approval_mode = "approve"
+
+[mcp_servers.esp-docs]
+enabled = true
+url = "https://mcp.espressif.com/docs"
+default_tools_approval_mode = "approve"
+startup_timeout_sec = 30
+tool_timeout_sec = 60

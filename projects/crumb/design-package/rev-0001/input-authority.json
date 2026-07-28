@@ -1,0 +1,147 @@
+{
+  "schema_version": "1.0",
+  "project_id": "crumb",
+  "inputs": [
+    {
+      "path": "requirements/crumb.md",
+      "sha256": "a2f88cd292ebd1c8fc9b77c1f6ba0bff9304324c893ac4657446e32a93c67de6",
+      "size": 2652,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "connections/crumb.md",
+      "sha256": "2866c30adc94c3b3c24112ec89525e7d547a2cadcbbda5876947d953a1bbc056",
+      "size": 502,
+      "media_type": "text/markdown"
+    }
+  ],
+  "identifiers": [
+    {
+      "value": "pico-d4",
+      "source": "requirements",
+      "offset": 9
+    },
+    {
+      "value": "ESP32",
+      "source": "requirements",
+      "offset": 162
+    },
+    {
+      "value": "ESP32",
+      "source": "requirements",
+      "offset": 263
+    },
+    {
+      "value": "ESP32",
+      "source": "requirements",
+      "offset": 455
+    },
+    {
+      "value": "ESP32",
+      "source": "requirements",
+      "offset": 472
+    },
+    {
+      "value": "chen19720530",
+      "source": "requirements",
+      "offset": 611
+    },
+    {
+      "value": "BQ25180YBGR",
+      "source": "requirements",
+      "offset": 772
+    },
+    {
+      "value": "W25N01GV",
+      "source": "requirements",
+      "offset": 812
+    },
+    {
+      "value": "ICS-41350",
+      "source": "requirements",
+      "offset": 886
+    },
+    {
+      "value": "ICS-41350",
+      "source": "requirements",
+      "offset": 958
+    },
+    {
+      "value": "PICO-D4",
+      "source": "connections",
+      "offset": 12
+    },
+    {
+      "value": "W25N01GV",
+      "source": "connections",
+      "offset": 74
+    }
+  ],
+  "pins": [
+    {
+      "gpio": 27,
+      "source": "connections",
+      "offset": 46
+    },
+    {
+      "gpio": 14,
+      "source": "connections",
+      "offset": 64
+    },
+    {
+      "gpio": 18,
+      "source": "connections",
+      "offset": 100
+    },
+    {
+      "gpio": 23,
+      "source": "connections",
+      "offset": 119
+    },
+    {
+      "gpio": 19,
+      "source": "connections",
+      "offset": 138
+    },
+    {
+      "gpio": 5,
+      "source": "connections",
+      "offset": 155
+    },
+    {
+      "gpio": 26,
+      "source": "connections",
+      "offset": 208
+    },
+    {
+      "gpio": 25,
+      "source": "connections",
+      "offset": 226
+    },
+    {
+      "gpio": 4,
+      "source": "connections",
+      "offset": 292
+    }
+  ],
+  "protocols": [
+    {
+      "endpoint": "http://crumb.xiaomeng-research.xyz/upload",
+      "source": "requirements",
+      "offset": 389
+    },
+    {
+      "endpoint": "http://crumb.xiaomeng-research.xyz/upload",
+      "source": "requirements",
+      "offset": 1037
+    }
+  ],
+  "secret_references": [
+    {
+      "kind": "user_input_secret",
+      "source": "requirements",
+      "offset": 597
+    }
+  ],
+  "digest": "14573cbdd9f822cd27bf6212dd0015cca30ee291ec17dc9d6e30797a48b77ace"
+}

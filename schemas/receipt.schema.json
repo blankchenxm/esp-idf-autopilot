@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://esp-autodev.local/schemas/receipt-1.0.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "receipt_id", "run_id", "operation", "started_at", "finished_at", "success", "command", "inputs", "outputs", "artifacts"],
+  "properties": {"schema_version": {"const": "1.0"}, "project_id": {"type": ["string", "null"]}, "receipt_id": {"type": "string"}, "run_id": {"type": "string"}, "operation": {"type": "string"}, "started_at": {"type": "string"}, "finished_at": {"type": "string"}, "success": {"type": "boolean"}, "command": {"type": "array"}, "inputs": {"type": "object"}, "outputs": {"type": "object"}, "artifacts": {"type": "array", "items": {"$ref": "artifact-ref.schema.json"}}, "failure": {"type": ["object", "null"]}}
+}

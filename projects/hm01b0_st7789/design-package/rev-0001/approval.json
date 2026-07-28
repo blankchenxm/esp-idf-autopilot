@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "project_id": "hm01b0_st7789",
+  "status": "PENDING",
+  "spec_revision": 1,
+  "design_digest": "f000e0d07118365c13a0aec6f6c187f44ff666824c43675c061e10f5140d98c6",
+  "approved_by": null,
+  "approved_at": null,
+  "unresolved_policy_items": [],
+  "pending_tier_c_items": [
+    "TC_PHYSICAL_IMAGE"
+  ]
+}

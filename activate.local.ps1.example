@@ -1,0 +1,13 @@
+# Machine-local ESP-IDF activation - copy to activate.local.ps1 (git-ignored) and
+# keep ONLY the line that matches how YOUR ESP-IDF is installed.
+#
+# Dot-source it before running hardware preflight or manual ESP-IDF commands:
+#     . .\activate.local.ps1
+# After it, `idf.py --version` must print a version.
+
+# --- Option A: EIM install (Espressif IDE Manager) ---------------------------
+# EIM generates a PowerShell profile under its tools dir; dot-source it.
+# . 'C:\Espressif\tools\Microsoft.v6.0.PowerShell_profile.ps1'
+
+# --- Option B: standard manual install ---------------------------------------
+# . "$HOME\esp\esp-idf\export.ps1"

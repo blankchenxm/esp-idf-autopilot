@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.1",
+  "project_id": "hm01b0_st7789",
+  "datasheets": [
+    {
+      "project_id": "hm01b0_st7789",
+      "subsystem_id": "hm01b0_driver",
+      "part_number": "HM01B0-MWA",
+      "variant": "HM01B0-MWA",
+      "document_id": "sha256:70a286c626ffa4458c5953f0bbd63b452cb81339b835a89b7bf53696664e9c67",
+      "revision": "history",
+      "source": "hardware/datasheets/objects/sha256/70a286c626ffa4458c5953f0bbd63b452cb81339b835a89b7bf53696664e9c67.pdf",
+      "sha256": "70a286c626ffa4458c5953f0bbd63b452cb81339b835a89b7bf53696664e9c67",
+      "level": "L1",
+      "coverage": [
+        "identity",
+        "pins",
+        "interface",
+        "electrical",
+        "timing",
+        "reset_recovery",
+        "registers_commands"
+      ],
+      "provider_receipt_id": "design-provider-c1bdee0e4cd0461a"
+    },
+    {
+      "project_id": "hm01b0_st7789",
+      "subsystem_id": "st7789_driver",
+      "part_number": "ST7789",
+      "variant": "ST7789",
+      "document_id": "sha256:1fe41a31c838077b07c0b03eee7b6746b9588c606977aabf77013569b843fa54",
+      "revision": "zjy154t-pg04",
+      "source": "hardware/datasheets/objects/sha256/1fe41a31c838077b07c0b03eee7b6746b9588c606977aabf77013569b843fa54.pdf",
+      "sha256": "1fe41a31c838077b07c0b03eee7b6746b9588c606977aabf77013569b843fa54",
+      "level": "L1",
+      "coverage": [
+        "identity",
+        "pins",
+        "interface",
+        "electrical",
+        "timing",
+        "reset_recovery",
+        "registers_commands"
+      ],
+      "provider_receipt_id": "design-provider-833020c927e0442d"
+    }
+  ]
+}

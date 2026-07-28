@@ -1,0 +1,234 @@
+{
+  "schema_version": "1.0",
+  "project_id": "hm01b0_st7789",
+  "inputs": [
+    {
+      "path": "requirements/hm01b0_st7789.md",
+      "sha256": "6811079f2d1f82aa4767f5df605afa7cda6f4c4eb925c0af73dcf4d6cac8adc5",
+      "size": 1103,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "connections/hm01b0_st7789.md",
+      "sha256": "ee8d1499d24bd1d7f7eee3c579a84c637bf9625f3c9e08b255a503c139cab3ce",
+      "size": 963,
+      "media_type": "text/markdown"
+    }
+  ],
+  "identifiers": [
+    {
+      "value": "ESP32-S3-WROOM-1",
+      "source": "requirements",
+      "offset": 5
+    },
+    {
+      "value": "HM01B0-MWA",
+      "source": "requirements",
+      "offset": 31
+    },
+    {
+      "value": "ST7789",
+      "source": "requirements",
+      "offset": 49
+    },
+    {
+      "value": "ESP32-S3",
+      "source": "requirements",
+      "offset": 76
+    },
+    {
+      "value": "HM01B0",
+      "source": "requirements",
+      "offset": 91
+    },
+    {
+      "value": "ST7789",
+      "source": "requirements",
+      "offset": 118
+    },
+    {
+      "value": "ESP32-S3",
+      "source": "requirements",
+      "offset": 238
+    },
+    {
+      "value": "HM01B0",
+      "source": "requirements",
+      "offset": 265
+    },
+    {
+      "value": "HM01B0",
+      "source": "requirements",
+      "offset": 314
+    },
+    {
+      "value": "ST7789",
+      "source": "requirements",
+      "offset": 356
+    },
+    {
+      "value": "ST7789",
+      "source": "requirements",
+      "offset": 436
+    },
+    {
+      "value": "ESP32-S3-WROOM-1",
+      "source": "connections",
+      "offset": 4
+    },
+    {
+      "value": "HM01B0-MWA",
+      "source": "connections",
+      "offset": 37
+    },
+    {
+      "value": "ST7789",
+      "source": "connections",
+      "offset": 56
+    },
+    {
+      "value": "ST7789",
+      "source": "connections",
+      "offset": 73
+    },
+    {
+      "value": "ESP32-S3-WROOM-1",
+      "source": "connections",
+      "offset": 92
+    },
+    {
+      "value": "HM01B0-MWA",
+      "source": "connections",
+      "offset": 364
+    },
+    {
+      "value": "ESP32-S3-WROOM-1",
+      "source": "connections",
+      "offset": 382
+    },
+    {
+      "value": "HM01B0-MWA",
+      "source": "connections",
+      "offset": 760
+    }
+  ],
+  "pins": [
+    {
+      "name": "ST7789_PIN_SCL",
+      "gpio": 35,
+      "source": "connections",
+      "offset": 122
+    },
+    {
+      "name": "ST7789_PIN_SDA",
+      "gpio": 36,
+      "source": "connections",
+      "offset": 163
+    },
+    {
+      "name": "ST7789_PIN_RES",
+      "gpio": 37,
+      "source": "connections",
+      "offset": 205
+    },
+    {
+      "name": "ST7789_PIN_DC",
+      "gpio": 38,
+      "source": "connections",
+      "offset": 244
+    },
+    {
+      "name": "ST7789_PIN_CS",
+      "gpio": 39,
+      "source": "connections",
+      "offset": 290
+    },
+    {
+      "name": "HM01B0_PIN_MCLK",
+      "gpio": 5,
+      "source": "connections",
+      "offset": 412
+    },
+    {
+      "name": "HM01B0_PIN_PCLK",
+      "gpio": 6,
+      "source": "connections",
+      "offset": 440
+    },
+    {
+      "name": "HM01B0_PIN_VSYNC",
+      "gpio": 7,
+      "source": "connections",
+      "offset": 468
+    },
+    {
+      "name": "HM01B0_PIN_HSYNC",
+      "gpio": 8,
+      "source": "connections",
+      "offset": 496
+    },
+    {
+      "name": "HM01B0_PIN_D0",
+      "gpio": 9,
+      "source": "connections",
+      "offset": 524
+    },
+    {
+      "name": "HM01B0_PIN_D1",
+      "gpio": 10,
+      "source": "connections",
+      "offset": 552
+    },
+    {
+      "name": "HM01B0_PIN_D2",
+      "gpio": 11,
+      "source": "connections",
+      "offset": 581
+    },
+    {
+      "name": "HM01B0_PIN_D3",
+      "gpio": 12,
+      "source": "connections",
+      "offset": 610
+    },
+    {
+      "name": "HM01B0_PIN_D4",
+      "gpio": 13,
+      "source": "connections",
+      "offset": 639
+    },
+    {
+      "name": "HM01B0_PIN_D5",
+      "gpio": 14,
+      "source": "connections",
+      "offset": 668
+    },
+    {
+      "name": "HM01B0_PIN_D6",
+      "gpio": 15,
+      "source": "connections",
+      "offset": 697
+    },
+    {
+      "name": "HM01B0_PIN_D7",
+      "gpio": 16,
+      "source": "connections",
+      "offset": 726
+    },
+    {
+      "name": "HM01B0_I2C_SCL_IO",
+      "gpio": 1,
+      "source": "connections",
+      "offset": 792
+    },
+    {
+      "name": "HM01B0_I2C_SDA_IO",
+      "gpio": 2,
+      "source": "connections",
+      "offset": 823
+    }
+  ],
+  "protocols": [],
+  "secret_references": [],
+  "digest": "93ac88f78b7f06113290a158c218183cc7ec1b499bf0a70fb1669723c674cdb7"
+}

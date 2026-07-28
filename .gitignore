@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.pyc
+
+# Machine-specific legacy Claude Code MCP config - copy from .mcp.json.example
+.mcp.json
+
+# Machine-specific ESP-IDF activation - copy from activate.local.ps1.example
+activate.local.ps1
+
+# ESP-IDF build artifacts (per-machine, regenerated)
+build/
+sdkconfig.old
+managed_components/
+dependencies.lock
+
+# Leftovers from the old async build_project tool (removed)
+mcp-build-state.json
+mcp-build.log
+
+# Wrapper logs (including the legacy project name)
+esp-idf-autopilot-mcp.log
+esp-idf-autodev-mcp.log
+
+# Preflight throwaway build dir
+.preflight/
+
+# Harness runtime and local Python environments
+runtime/*.sqlite
+runtime/*.sqlite-*
+runtime/projects/
+hardware/datasheets/objects/
+hardware/datasheets/incoming/
+.venv/
+.vendor/
+
+# Explicitly authorized local project secret material; never commit or archive.
+projects/*/private/
+
+# Per-project generated runtime state and raw provider/build/serial logs.
+# Approved design revisions under design-package/rev-* remain reviewable.
+projects/*/design-package/.staging/
+projects/*/execution/
+projects/*/logs/

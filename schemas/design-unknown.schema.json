@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Typed Design Unknown",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["code", "owner", "category", "phase", "authority", "severity", "required_operations", "resolution"],
+  "properties": {
+    "code": {"enum": ["USER_DECISION", "INPUT_AMBIGUITY", "EXTERNAL_ACQUISITION", "IMPLEMENTATION_READINESS", "HARNESS_POLICY", "MODEL_PROPOSAL_INVALID", "INTERNAL_FAULT"]},
+    "owner": {"type": "string", "minLength": 1},
+    "category": {"type": "string", "minLength": 1},
+    "phase": {"enum": ["design", "execution"]},
+    "authority": {"enum": ["user_input", "external_fact", "harness_policy", "model_proposal"]},
+    "severity": {"enum": ["blocking_before_approval", "blocking_before_implementation", "advisory"]},
+    "required_operations": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "resolution": {"type": ["string", "null"]}
+  }
+}

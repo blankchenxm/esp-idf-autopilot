@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://esp-autodev.local/schemas/artifact-ref-1.0.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["path", "sha256", "size", "media_type"],
+  "properties": {"path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "size": {"type": "integer", "minimum": 0}, "media_type": {"type": "string"}}
+}

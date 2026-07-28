@@ -1,0 +1,18 @@
+{
+  "_comment": "Legacy Claude Code MCP template. Codex uses .codex/config.toml instead. Copy this file to .mcp.json only when running the old Claude Code workflow.",
+  "mcpServers": {
+    "esp-serial": {
+      "command": "python",
+      "args": ["serial_mcp.py"]
+    },
+    "esp-component-registry": {
+      "type": "http",
+      "url": "https://components.espressif.com/mcp"
+    },
+    "esp-docs": {
+      "_comment": "Optional. Requires per-user OAuth on first use (browser prompt). Rate-limited 40/hour, 200/day. Remove this block to skip it.",
+      "type": "http",
+      "url": "https://mcp.espressif.com/docs"
+    }
+  }
+}

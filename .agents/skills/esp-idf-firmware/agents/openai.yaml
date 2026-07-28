@@ -1,0 +1,24 @@
+interface:
+  display_name: "ESP-IDF Firmware"
+  short_description: "Closed-loop ESP-IDF firmware bring-up and hardware verification."
+  default_prompt: "Use $esp-idf-firmware to build, flash, and verify this ESP-IDF firmware change on hardware."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "esp-serial"
+      description: "Local serial monitor for ESP32 boot logs and self-test interaction."
+      transport: "stdio"
+    - type: "mcp"
+      value: "esp-component-registry"
+      description: "Espressif component registry search."
+      transport: "streamable_http"
+      url: "https://components.espressif.com/mcp"
+    - type: "mcp"
+      value: "esp-docs"
+      description: "Espressif documentation search."
+      transport: "streamable_http"
+      url: "https://mcp.espressif.com/docs"
+
+policy:
+  allow_implicit_invocation: true

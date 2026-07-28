@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spec_markdown", "execution_contract_json", "providers_json", "blocking_unknowns"],
+  "properties": {
+    "spec_markdown": {"type": "string", "minLength": 200},
+    "execution_contract_json": {"type": "string", "minLength": 2},
+    "providers_json": {"type": "string", "minLength": 2},
+    "blocking_unknowns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "owner", "category", "phase", "authority", "severity", "required_operations", "resolution"],
+        "properties": {
+          "code": {"enum": ["USER_DECISION", "INPUT_AMBIGUITY", "EXTERNAL_ACQUISITION", "IMPLEMENTATION_READINESS", "HARNESS_POLICY", "MODEL_PROPOSAL_INVALID", "INTERNAL_FAULT"]},
+          "owner": {"type": "string", "minLength": 1},
+          "category": {"type": "string", "minLength": 1},
+          "phase": {"enum": ["design", "execution"]},
+          "authority": {"enum": ["user_input", "external_fact", "harness_policy", "model_proposal"]},
+          "severity": {"enum": ["blocking_before_approval", "blocking_before_implementation", "advisory"]},
+          "required_operations": {"type": "array", "items": {"type": "string"}},
+          "resolution": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

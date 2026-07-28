@@ -1,0 +1,4 @@
+{
+  "description": "ESP-IDF Stop hook disabled at the user's request.",
+  "hooks": {}
+}

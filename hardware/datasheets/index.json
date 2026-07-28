@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "objects": {
+    "c2008f613723fec3b7b2d0b61dc3909de0816ecaae8290c7b826613071cc0790": {
+      "source": "hardware/datasheets/objects/sha256/c2008f613723fec3b7b2d0b61dc3909de0816ecaae8290c7b826613071cc0790.pdf",
+      "projects": [
+        "crumb"
+      ],
+      "parts": [
+        "BQ25180YBGR"
+      ]
+    },
+    "79c9264277ee6199e57ae1ef2ab2d73277889869590649b70b4c067460e83a8f": {
+      "source": "hardware/datasheets/objects/sha256/79c9264277ee6199e57ae1ef2ab2d73277889869590649b70b4c067460e83a8f.pdf",
+      "projects": [
+        "crumb"
+      ],
+      "parts": [
+        "W25N01GV"
+      ]
+    },
+    "70717a4026e156603b5600f952a3c6136d7c1fb867bb11f8b42e8e28d82b8693": {
+      "source": "hardware/datasheets/objects/sha256/70717a4026e156603b5600f952a3c6136d7c1fb867bb11f8b42e8e28d82b8693.pdf",
+      "projects": [
+        "crumb"
+      ],
+      "parts": [
+        "ICS-41350"
+      ]
+    },
+    "70a286c626ffa4458c5953f0bbd63b452cb81339b835a89b7bf53696664e9c67": {
+      "source": "hardware/datasheets/objects/sha256/70a286c626ffa4458c5953f0bbd63b452cb81339b835a89b7bf53696664e9c67.pdf",
+      "projects": [
+        "hm01b0_st7789"
+      ],
+      "parts": [
+        "HM01B0-MWA"
+      ]
+    },
+    "1fe41a31c838077b07c0b03eee7b6746b9588c606977aabf77013569b843fa54": {
+      "source": "hardware/datasheets/objects/sha256/1fe41a31c838077b07c0b03eee7b6746b9588c606977aabf77013569b843fa54.pdf",
+      "projects": [
+        "hm01b0_st7789"
+      ],
+      "parts": [
+        "ST7789"
+      ]
+    }
+  }
+}
