@@ -27,6 +27,29 @@ def valid_contract(project: str = "fixture") -> dict:
     }
 
 
+def valid_v15_contract(project: str = "fixture") -> dict:
+    value = valid_contract(project)
+    value["schema_version"] = "1.5"
+    value["input_authority_ref"] = {
+        "path": "authority.json", "sha256": "0" * 64, "size": 1,
+        "media_type": "application/json",
+    }
+    value["implementation_facts"] = []
+    value["product_decisions"] = []
+    value["subsystems"][0].update({
+        "responsibility_layer": "system_orchestration",
+        "verification_batch": "probe",
+        "batch_compatible": True,
+        "isolation_required": False,
+        "hardware_resources": ["uart0"],
+    })
+    value["workflow"]["stages"] = [
+        "preflight", "design", "approval", "bind", "subsystems",
+        "integration", "tier_c", "closure", "release",
+    ]
+    return value
+
+
 def package(tmp_path: Path) -> Path:
     root = tmp_path; project = "fixture"; design = root / "projects" / project / "design-package" / "rev-0001"; design.mkdir(parents=True)
     for area in ("requirements", "connections"):
@@ -59,14 +82,7 @@ def test_tier_ab_cannot_delegate_to_user():
 
 
 def test_v15_selftest_verification_requires_an_executable_isolated_setup():
-    value = valid_contract()
-    value["schema_version"] = "1.5"
-    value["input_authority_ref"] = {
-        "path": "authority.json", "sha256": "0" * 64, "size": 1,
-        "media_type": "application/json",
-    }
-    value["implementation_facts"] = []
-    value["product_decisions"] = []
+    value = valid_v15_contract()
     row = value["verification"][0]
     row["tier"] = "A"
     row["test_setup"] = {
@@ -82,14 +98,7 @@ def test_v15_selftest_verification_requires_an_executable_isolated_setup():
 
 
 def test_v15_rejects_mixed_setups_in_one_verification_batch():
-    value = valid_contract()
-    value["schema_version"] = "1.5"
-    value["input_authority_ref"] = {
-        "path": "authority.json", "sha256": "0" * 64, "size": 1,
-        "media_type": "application/json",
-    }
-    value["implementation_facts"] = []
-    value["product_decisions"] = []
+    value = valid_v15_contract()
     value["verification"][0].update({
         "test_setup": {"kind": "normal_boot"},
         "stimulus": {"kind": "none"},
