@@ -135,7 +135,7 @@ def test_readiness_adopted_component_reads_only_capability_gap():
     ]
 
 
-def test_readiness_custom_driver_uses_operation_gaps_not_full_l2():
+def test_readiness_custom_driver_defaults_host_lifecycle_after_hardware_grounding():
     result = assess_implementation_readiness(
         owner="rare_chip",
         required_operations=["identify", "read", "reset_recovery"],
@@ -154,8 +154,8 @@ def test_readiness_custom_driver_uses_operation_gaps_not_full_l2():
         ],
     )
 
-    assert result.missing_facts == ["reset_recovery"]
-    assert len(result.reader_requests) == 1
+    assert result.ready is True
+    assert result.missing_facts == []
 
 
 def test_high_risk_operation_requires_authoritative_source_even_if_fact_exists():

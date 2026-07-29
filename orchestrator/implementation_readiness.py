@@ -14,6 +14,9 @@ HIGH_RISK_OPERATIONS = frozenset({
     "firmware_update",
 })
 AUTHORITATIVE_SOURCE_KINDS = frozenset({"datasheet", "registry", "local_idf"})
+DEFAULT_CUSTOM_SOFTWARE_OPERATIONS = frozenset({
+    "initialize", "detect_sample_loss", "reset_recovery",
+})
 
 
 @dataclass(frozen=True)
@@ -70,6 +73,19 @@ def assess_implementation_readiness(
         ):
             continue
         fact_covered.append(operation)
+    # Default policy for a custom external-part driver: once an authoritative
+    # hardware/interface fact exists, these are host-side ESP-IDF lifecycle
+    # behaviours.  They do not require a fictitious datasheet parameter with
+    # the same software-operation name.  High-risk operations remain subject
+    # to explicit authoritative operation facts above.
+    if selection.get("decision") == "custom" and any(
+        str(item.get("subsystem_id") or owner) == owner
+        and str(item.get("source_kind") or "") in AUTHORITATIVE_SOURCE_KINDS
+        for item in existing_facts
+    ):
+        for operation in required:
+            if operation in DEFAULT_CUSTOM_SOFTWARE_OPERATIONS and operation not in fact_covered:
+                fact_covered.append(operation)
     missing = [
         operation
         for operation in required
