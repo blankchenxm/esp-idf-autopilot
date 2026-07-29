@@ -12,6 +12,9 @@ from .storage import atomic_write_json, file_ref
 _PART = re.compile(r"\b[A-Z][A-Z0-9-]*\d[A-Z0-9-]*\b", re.IGNORECASE)
 _GPIO = re.compile(r"(?:GPIO\s*(?:pin|引脚)?\s*|PIN[_ ]?)(\d+)\b", re.IGNORECASE)
 _C_PIN_DEFINE = re.compile(r"(?m)^\s*#define\s+([A-Za-z][A-Za-z0-9_]*)\s+(\d+)\b")
+_I2C_LINE = re.compile(r"(?i)\bi2c\b[^\r\n]{0,120}")
+_I2C_CONTROLLER = re.compile(r"(?i)(?:controller|bus|port|控制器)\s*(?:number|num|#|号)?\s*([01])\b")
+_I2C_CLOCK = re.compile(r"(?i)\b(\d+)\s*(khz|mhz|hz)\b")
 _SECRET = re.compile(r"(?i)\b(?:wifi\s*)?(?:password|passwd|token|api[_ -]?key)\s*[:：=]\s*`?([^\s`]+)")
 
 
@@ -38,6 +41,7 @@ def compile_input_authority(repo_root: Path, project: str) -> dict[str, Any]:
     identifiers: list[dict[str, Any]] = []
     pins: list[dict[str, Any]] = []
     protocols: list[dict[str, Any]] = []
+    i2c_configs: list[dict[str, Any]] = []
     for area, text in text_by_area.items():
         secret_spans = [match.span(1) for match in _SECRET.finditer(text)]
         for match in _PART.finditer(text):
@@ -61,6 +65,15 @@ def compile_input_authority(repo_root: Path, project: str) -> dict[str, Any]:
                 pins.append(item)
         for match in re.finditer(r"https?://[^\s`)>]+", text):
             protocols.append({"endpoint": match.group(0), "source": area, "offset": match.start()})
+        for match in _I2C_LINE.finditer(text):
+            controller = _I2C_CONTROLLER.search(match.group(0))
+            clock = _I2C_CLOCK.search(match.group(0))
+            if controller is None or clock is None:
+                continue
+            multiplier = {"hz": 1, "khz": 1_000, "mhz": 1_000_000}[clock.group(2).casefold()]
+            item = {"controller": int(controller.group(1)), "clock_hz": int(clock.group(1)) * multiplier, "source": area, "offset": match.start()}
+            if item not in i2c_configs:
+                i2c_configs.append(item)
     secret_references = [
         {"kind": "user_input_secret", "source": area, "offset": match.start()}
         for area, text in text_by_area.items() for match in _SECRET.finditer(text)
@@ -72,6 +85,7 @@ def compile_input_authority(repo_root: Path, project: str) -> dict[str, Any]:
         "identifiers": identifiers,
         "pins": pins,
         "protocols": protocols,
+        "i2c_configs": i2c_configs,
         "secret_references": secret_references,
         "digest": _sha256("".join(item["sha256"] for item in sources).encode()),
     }

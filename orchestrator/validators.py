@@ -115,7 +115,46 @@ def topological_subsystems(subsystems: list[dict[str, Any]]) -> list[str]:
     return order
 
 
-def validate_contract(contract: dict[str, Any]) -> list[str]:
+def validate_i2c_transport_bindings(
+    contract: dict[str, Any], input_authority: dict[str, Any] | None = None,
+) -> list[str]:
+    """Require input-bound I2C controller and timing before implementation."""
+    if contract.get("schema_version") != "1.5":
+        return []
+    owners = [
+        str(item.get("id") or "")
+        for item in contract.get("subsystems", [])
+        if isinstance(item, dict)
+        and item.get("classification") == "external_part"
+        and any(str(resource).casefold() == "i2c" for resource in item.get("hardware_resources", []))
+    ]
+    if not owners:
+        return []
+    bindings = contract.get("board_transport_bindings", [])
+    if not isinstance(bindings, list):
+        return ["board_transport_bindings must be an array"]
+    authorized = {
+        (item.get("controller"), item.get("clock_hz"))
+        for item in (input_authority or {}).get("i2c_configs", [])
+        if isinstance(item, dict)
+    }
+    errors: list[str] = []
+    for owner in owners:
+        matches = [item for item in bindings if isinstance(item, dict) and item.get("owner") == owner and str(item.get("bus") or "").casefold() == "i2c"]
+        if len(matches) != 1:
+            errors.append(f"{owner} requires exactly one input-bound I2C transport binding with controller and clock_hz")
+            continue
+        controller, clock_hz = matches[0].get("controller"), matches[0].get("clock_hz")
+        if type(controller) is not int or controller not in {0, 1} or type(clock_hz) is not int or clock_hz <= 0:
+            errors.append(f"{owner} I2C transport binding requires controller 0 or 1 and positive clock_hz")
+        elif input_authority is not None and (controller, clock_hz) not in authorized:
+            errors.append(f"{owner} I2C transport binding is not present in input authority")
+    return errors
+
+
+def validate_contract(
+    contract: dict[str, Any], input_authority: dict[str, Any] | None = None,
+) -> list[str]:
     # The Design graph calls this validator before choosing either repair or
     # promotion.  Keep the JSON Schema check here as well as in
     # ``validate_design_package`` so a schema-only defect is routed back to
@@ -143,6 +182,7 @@ def validate_contract(contract: dict[str, Any]) -> list[str]:
     strict_v12 = contract.get("schema_version") in {"1.2", "1.3", "1.4", "1.5"}
     strict_v13 = contract.get("schema_version") in {"1.3", "1.4", "1.5"}
     strict_v15 = contract.get("schema_version") == "1.5"
+    errors.extend(validate_i2c_transport_bindings(contract, input_authority))
     if strict_v13:
         errors.extend(_unresolved_approval_paths(contract))
     if strict_contract:

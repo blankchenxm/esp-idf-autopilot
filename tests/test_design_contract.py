@@ -97,6 +97,25 @@ def test_v15_selftest_verification_requires_an_executable_isolated_setup():
     assert any("isolated_build" in error for error in validate_contract(value))
 
 
+def test_v15_i2c_external_part_requires_input_bound_transport_configuration():
+    value = valid_v15_contract()
+    value["subsystems"][0].update({
+        "classification": "external_part", "part_number": "PART1",
+        "registry_search_required": True, "responsibility_layer": "device_driver",
+        "hardware_resources": ["I2C"],
+    })
+    assert any("input-bound I2C transport binding" in error for error in validate_contract(value))
+
+    value["board_transport_bindings"] = [{
+        "owner": "probe", "bus": "i2c", "controller": 0, "clock_hz": 400_000,
+    }]
+    authority = {"i2c_configs": [{"controller": 1, "clock_hz": 400_000}]}
+    assert any("not present in input authority" in error for error in validate_contract(value, authority))
+
+    authority["i2c_configs"][0]["controller"] = 0
+    assert not any("I2C transport binding" in error for error in validate_contract(value, authority))
+
+
 def test_v15_rejects_mixed_setups_in_one_verification_batch():
     value = valid_v15_contract()
     value["verification"][0].update({

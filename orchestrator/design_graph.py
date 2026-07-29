@@ -378,8 +378,20 @@ class DesignGraphNodes:
             for item in grounding_diagnostics
             if item.get("severity", "BLOCKING") == "BLOCKING"
         ]
-        contract_validator_errors = validate_contract(contract)
         input_authority = json.loads(Path(state["input_authority_path"]).read_text(encoding="utf-8"))
+        contract_validator_errors = validate_contract(contract, input_authority)
+        if any("I2C transport binding" in error for error in contract_validator_errors):
+            draft.blocking_unknowns.append({
+                "code": "USER_DECISION",
+                "owner": "board_resources",
+                "category": "i2c_transport_configuration",
+                "phase": "design",
+                "authority": "user_input",
+                "severity": "blocking_before_approval",
+                "required_operations": ["select_i2c_controller", "select_i2c_clock"],
+                "resolution": None,
+                "required_input": "Declare the BQ25180YBGR I2C controller (0 or 1) and clock in connections/<project>.md, for example: I2C controller 0, 400 kHz.",
+            })
         active_unknowns, resolved_unknowns = reconcile_grounding_unknowns(
             contract,
             draft.blocking_unknowns,
