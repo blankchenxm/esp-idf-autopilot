@@ -1071,6 +1071,7 @@ class HarnessNodes:
         batch = "+".join(owners)
         setup = self._verification_setup(rows)
         build_dir: Path | None = None
+        workspace_scope = "project-build"
         if setup.get("kind") == "firmware_selftest":
             baseline = project_dir / "sdkconfig"
             if not baseline.is_file():
@@ -1079,6 +1080,7 @@ class HarnessNodes:
             verify_dir = self._verification_workspace(project_dir, state, batch)
             verify_dir.mkdir(parents=True, exist_ok=True)
             build_dir = verify_dir / "build"
+            workspace_scope = build_dir.relative_to(project_dir).as_posix()
             sdkconfig = verify_dir / "sdkconfig"
             defaults = verify_dir / "sdkconfig.verification.defaults"
             defaults.write_text(
@@ -1092,13 +1094,15 @@ class HarnessNodes:
                 idempotency_key=self._transaction_key(
                     state, "verification_configure", batch=batch,
                     setup=json.dumps(setup, sort_keys=True),
+                    workspace=workspace_scope,
                 ),
             )
             attempt_receipts.append(configure.receipt_id)
             if not configure.success:
                 raise ReceiptFailure(configure)
         build_key = self._transaction_key(
-            state, "subsystem_build", batch=batch, setup=json.dumps(setup, sort_keys=True)
+            state, "subsystem_build", batch=batch,
+            setup=json.dumps(setup, sort_keys=True), workspace=workspace_scope,
         )
         build = idf.build(
             project_dir, build_dir, "verification_build" if build_dir else "build",
@@ -1121,6 +1125,7 @@ class HarnessNodes:
                 "subsystem_flash",
                 batch=batch,
                 setup=json.dumps(setup, sort_keys=True),
+                workspace=workspace_scope,
                 firmware_sha256=firmware_hash,
                 port=state["port"],
             ),

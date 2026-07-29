@@ -32,6 +32,27 @@ def test_isolated_verification_workspace_uses_short_project_local_path(tmp_path:
     assert "execution" not in workspace.parts
 
 
+def test_verification_transaction_key_binds_isolated_workspace(tmp_path: Path):
+    project = tmp_path / "projects" / "crumb"
+    project.mkdir(parents=True)
+    nodes = HarnessNodes(tmp_path)
+    state = {
+        "project_dir": str(project),
+        "run_id": "run-test",
+        "design_digest": "0" * 64,
+        "hardware_identity": {},
+    }
+
+    old_key = nodes._transaction_key(
+        state, "verification_configure", batch="charger", workspace="execution/verification/old/build"
+    )
+    short_key = nodes._transaction_key(
+        state, "verification_configure", batch="charger", workspace=".v/1234/b2-charger/build"
+    )
+
+    assert old_key != short_key
+
+
 def test_recovery_retries_when_harness_material_changed(tmp_path: Path):
     project = tmp_path / "projects" / "crumb"
     state = {
