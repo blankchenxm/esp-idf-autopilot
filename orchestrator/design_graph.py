@@ -379,6 +379,47 @@ class DesignGraphNodes:
             if item.get("severity", "BLOCKING") == "BLOCKING"
         ]
         input_authority = json.loads(Path(state["input_authority_path"]).read_text(encoding="utf-8"))
+        # A single explicit user I2C configuration is sufficient authority
+        # for every external I2C owner. Materialize the binding here instead
+        # of making promotion depend on a provider repeating deterministic
+        # input facts in a newly introduced contract field. Multiple choices
+        # deliberately remain unresolved and route to the user-decision gate.
+        i2c_configs = [
+            item for item in input_authority.get("i2c_configs", [])
+            if isinstance(item, dict)
+            and type(item.get("controller")) is int
+            and type(item.get("clock_hz")) is int
+        ]
+        if len(i2c_configs) == 1:
+            bindings = contract.setdefault("board_transport_bindings", [])
+            if isinstance(bindings, list):
+                configuration = i2c_configs[0]
+                for subsystem in contract.get("subsystems", []):
+                    if not isinstance(subsystem, dict):
+                        continue
+                    if (
+                        subsystem.get("classification") != "external_part"
+                        or not any(
+                            str(resource).casefold() == "i2c"
+                            for resource in subsystem.get("hardware_resources", [])
+                        )
+                    ):
+                        continue
+                    owner = str(subsystem.get("id") or "")
+                    if not owner or any(
+                        isinstance(item, dict)
+                        and item.get("owner") == owner
+                        and str(item.get("bus") or "").casefold() == "i2c"
+                        for item in bindings
+                    ):
+                        continue
+                    bindings.append({
+                        "owner": owner,
+                        "bus": "i2c",
+                        "controller": configuration["controller"],
+                        "clock_hz": configuration["clock_hz"],
+                        "origin": "DERIVED_INPUT_AUTHORITY",
+                    })
         contract_validator_errors = validate_contract(contract, input_authority)
         if any("I2C transport binding" in error for error in contract_validator_errors):
             draft.blocking_unknowns.append({
