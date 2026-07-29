@@ -33,3 +33,13 @@ def test_implementation_fact_does_not_require_evidence_locators_in_source(tmp_pa
         ]}],
     }]}
     assert validate_source_facts(tmp_path, contract) == []
+
+
+def test_recursive_component_glob_includes_files_at_component_root(tmp_path: Path):
+    source = tmp_path / "components" / "sensor"; source.mkdir(parents=True)
+    (source / "sensor.c").write_text("#define SENSOR_ADDRESS 0x6A\n", encoding="utf-8")
+    contract = {"implementation_facts": [{
+        "id": "sensor.address", "subsystem_id": "sensor",
+        "source_assertions": [{"path_glob": "components/sensor/**/*", "required_tokens": ["0x6A"]}],
+    }]}
+    assert validate_source_facts(tmp_path, contract) == []

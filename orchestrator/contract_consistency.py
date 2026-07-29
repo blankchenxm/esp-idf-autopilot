@@ -22,6 +22,14 @@ def _is_evidence_locator_token(token: str) -> bool:
     return token == "datasheet-extracted.txt" or bool(_EVIDENCE_SHA256_TOKEN.fullmatch(token))
 
 
+def _matches_project_glob(path: str, pattern: str) -> bool:
+    """Match a project assertion glob, where ``**`` also permits zero dirs."""
+    return fnmatch.fnmatch(path, pattern) or (
+        "/**/" in pattern
+        and fnmatch.fnmatch(path, pattern.replace("/**/", "/"))
+    )
+
+
 def validate_source_facts(
     project_dir: Path,
     contract: dict[str, Any],
@@ -61,7 +69,9 @@ def validate_source_facts(
                 continue
             matched = [
                 path for path in files
-                if fnmatch.fnmatch(path.relative_to(project_dir).as_posix(), pattern)
+                if _matches_project_glob(
+                    path.relative_to(project_dir).as_posix(), pattern
+                )
             ]
             if not matched:
                 errors.append(f"implementation fact {fact_id!r} source assertion matches no project source: {pattern}")

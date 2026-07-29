@@ -101,6 +101,29 @@ def test_missing_owner_source_runs_the_materialization_adapter(tmp_path: Path):
     assert receipts == ["agent-1"]
 
 
+def test_compliant_existing_source_never_runs_materialization_adapter(tmp_path: Path):
+    current = state(tmp_path)
+    project = Path(current["project_dir"])
+    design = project / "design-package" / "rev-0001"
+    design.mkdir(parents=True)
+    (design / "execution-contract.json").write_text("{}", encoding="utf-8")
+    current["design_dir"] = str(design)
+    (project / "CMakeLists.txt").write_text("cmake_minimum_required(VERSION 3.16)\n")
+    component = project / "components" / "probe"
+    (component / "include").mkdir(parents=True)
+    (component / "CMakeLists.txt").write_text("idf_component_register(SRCS \"probe.c\" INCLUDE_DIRS \"include\")\n")
+    (component / "probe.c").write_text("void probe(void) {}\n")
+    (component / "include" / "probe.h").write_text("#pragma once\n")
+
+    with patch("orchestrator.graph.AgentAdapter.execute") as execute:
+        receipts = HarnessNodes(tmp_path)._materialize_owner_source(
+            current, project, HarnessNodes(tmp_path)._context(current)[1], "probe", []
+        )
+
+    assert receipts == []
+    execute.assert_not_called()
+
+
 def test_repairable_build_failure_runs_owner_patch_before_retry(tmp_path: Path):
     current = state(tmp_path)
     project = Path(current["project_dir"])

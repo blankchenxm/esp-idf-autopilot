@@ -20,6 +20,7 @@ from .errors import DiagnosticFailure, ReceiptFailure
 from .policies import classify_failure, disposition_for, failure_fingerprint, material_fingerprint, progress_fingerprint, recovery_budget
 from .evaluation import evaluate_text
 from .contract_consistency import validate_source_facts
+from .implementation_reuse import assess_existing_implementation
 from .state import HarnessState
 from .storage import ProjectStore, atomic_write_json, digest, file_ref
 from .subgraphs.release import release_marker
@@ -124,29 +125,56 @@ class HarnessNodes:
         addendum_path, readiness_receipts = self._ensure_implementation_readiness(
             state, project_dir, store, owner
         )
-        try:
-            self._require_owned_source(project_dir, owner, rows)
+        addendum_facts: list[dict[str, Any]] = []
+        if addendum_path is not None:
+            value = json.loads(addendum_path.read_text(encoding="utf-8"))
+            addendum_facts = [
+                item for item in value.get("implementation_facts", [])
+                if isinstance(item, dict)
+            ]
+        reuse = assess_existing_implementation(
+            project_dir, owner, self._contract(state), addendum_facts
+        )
+        if reuse.reusable:
+            self._event(state, "implementation_reuse", {
+                "owner": owner,
+                "decision": "reuse",
+                "source_digest": reuse.source_digest,
+                "addendum": addendum_path.relative_to(project_dir).as_posix()
+                if addendum_path is not None else None,
+            })
             return readiness_receipts
-        except (FileNotFoundError, ValueError) as requirement_error:
-            action = AgentAction(
-                project=str(state["project"]),
-                owner=owner,
-                contract_path=Path(state["design_dir"]) / "execution-contract.json",
-                requirement_path=self.repo_root / "requirements" / f"{state['project']}.md",
-                connection_path=self.repo_root / "connections" / f"{state['project']}.md",
-                instruction=(
-                    "Materialize this owner for its first frozen verification "
-                    f"batch. The deterministic source gate reported: {requirement_error}"
-                ),
-                implementation_addendum_path=addendum_path,
+        action = AgentAction(
+            project=str(state["project"]),
+            owner=owner,
+            contract_path=Path(state["design_dir"]) / "execution-contract.json",
+            requirement_path=self.repo_root / "requirements" / f"{state['project']}.md",
+            connection_path=self.repo_root / "connections" / f"{state['project']}.md",
+            instruction=(
+                "Repair only the named reuse-gate failures for this existing "
+                f"owner; do not rewrite compliant source. Failures: {reuse.reasons}"
+            ),
+            implementation_addendum_path=addendum_path,
+        )
+        result = AgentAdapter(
+            self.repo_root, store, str(state["run_id"]), timeout=1200
+        ).execute(action)
+        if not result.success:
+            raise ReceiptFailure(result)
+        repaired = assess_existing_implementation(
+            project_dir, owner, self._contract(state), addendum_facts
+        )
+        if not repaired.reusable:
+            raise ValueError(
+                f"owner {owner!r} remains ineligible for reuse: {repaired.reasons}"
             )
-            result = AgentAdapter(
-                self.repo_root, store, str(state["run_id"]), timeout=1200
-            ).execute(action)
-            if not result.success:
-                raise ReceiptFailure(result)
-            self._require_owned_source(project_dir, owner, rows)
-            return readiness_receipts + [result.receipt_id]
+        self._event(state, "implementation_reuse", {
+            "owner": owner,
+            "decision": "repaired",
+            "source_digest": repaired.source_digest,
+            "reasons": reuse.reasons,
+        })
+        return readiness_receipts + [result.receipt_id]
 
     def _ensure_implementation_readiness(
         self,
