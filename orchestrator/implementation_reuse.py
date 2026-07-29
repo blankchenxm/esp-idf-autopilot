@@ -60,10 +60,35 @@ def assess_existing_implementation(
         {owner},
         additional_facts=implementation_facts,
     ))
+    # A component selftest is not verifiable merely because its function was
+    # compiled.  Its frozen test setup boots app_main(), so the product
+    # composition must make the retained selftest reachable from main/.  Keep
+    # this in the deterministic reuse gate: otherwise an agent can create a
+    # correct component that is silently absent from every hardware run.
+    selftest_symbol = f"{owner}_selftest("
+    component_defines_selftest = any(
+        path.suffix == ".c" and selftest_symbol in path.read_text(
+            encoding="utf-8", errors="ignore"
+        )
+        for path in files
+    )
+    main_files = sorted(
+        path for path in (project_dir / "main").rglob("*.c")
+    ) if (project_dir / "main").is_dir() else []
+    if component_defines_selftest and not any(
+        selftest_symbol in path.read_text(encoding="utf-8", errors="ignore")
+        for path in main_files
+    ):
+        errors.append(
+            f"component {owner!r} selftest is not composed by main/"
+        )
     if errors:
         return ImplementationReuseDecision(owner, False, None, errors)
     hasher = hashlib.sha256()
-    for path in files:
+    # main/ composition changes alter what the selftest image actually runs;
+    # include it in the reuse digest so existing evidence is never bound to a
+    # stale composition.
+    for path in files + main_files:
         hasher.update(path.relative_to(project_dir).as_posix().encode("utf-8"))
         hasher.update(b"\0")
         hasher.update(hashlib.sha256(path.read_bytes()).digest())
