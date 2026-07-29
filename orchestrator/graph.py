@@ -758,6 +758,30 @@ class HarnessNodes:
             }
             self._projection(state, updates); self._event({**state, **updates}, "recover", {"result": "internal_fault", "fingerprint": signature})
             return updates
+        # A missing firmware marker may be a short-lived serial-startup race on
+        # its first observation.  Repeating the identical capture, however,
+        # cannot make a marker appear when the component selftest was never
+        # composed into main/.  Promote the second identical observation to an
+        # owner repair before consuming the transient-retry budget.  This is a
+        # graph policy (and is receipt/evidence driven), not an agent prompt.
+        if (
+            diagnostic.disposition == FailureDisposition.RETRY_TRANSIENT
+            and diagnostic.cause == FailureCategory.SERIAL
+            and diagnostic.affected_owner
+            and diagnostic.summary.startswith("expected marker missing:")
+            and attempts[signature] >= 2
+        ):
+            diagnostic = diagnostic.model_copy(update={
+                "disposition": FailureDisposition.REPAIR_INTERNAL,
+                "responsible_party": "implementation_agent",
+                "retry_scope": "owner_and_consumers",
+            })
+            self._event(state, "recover", {
+                "result": "promote_missing_marker_to_owner_repair",
+                "owner": diagnostic.affected_owner,
+                "fingerprint": signature,
+                "attempt": attempts[signature],
+            })
         if attempts[signature] > budget:
             blocker = Blocker(
                 kind="internal_stall",
@@ -835,7 +859,9 @@ class HarnessNodes:
                         f"Cause: {diagnostic.cause.value}. "
                         f"Observed failure: {diagnostic.summary}. "
                         "Make the smallest owning change and preserve the "
-                        "approved contract."
+                        "approved contract. If a component selftest is not "
+                        "reachable from main/, update only the necessary "
+                        "product composition call as part of this owner repair."
                         + self._product_default_instruction(owner)
                     ),
                     implementation_addendum_path=(
