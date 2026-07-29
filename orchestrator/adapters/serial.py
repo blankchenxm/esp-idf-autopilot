@@ -17,6 +17,18 @@ from ..codex_runner import background_creationflags, hidden_powershell_command, 
 from ..storage import ProjectStore, file_ref
 
 
+_FIRMWARE_ERROR_OWNER = re.compile(r"^E\s+\(\d+\)\s+([A-Za-z][A-Za-z0-9_]*):", re.MULTILINE)
+
+
+def _fatal_owner(text: str) -> str | None:
+    """Return the component that logged immediately before an app fatal marker."""
+    fatal_at = text.rfind("CRUMB_FATAL")
+    if fatal_at < 0:
+        return None
+    owners = _FIRMWARE_ERROR_OWNER.findall(text[:fatal_at])
+    return owners[-1] if owners else None
+
+
 class SerialAdapter:
     """Bounded esp-serial MCP client; every call owns and releases its stdio server."""
 
@@ -149,6 +161,7 @@ class SerialAdapter:
                 summary=(
                     f"firmware emitted CRUMB_FATAL before expected marker: {marker}"
                 ),
+                owner=_fatal_owner(text),
             )
         else:
             failure = Failure(
