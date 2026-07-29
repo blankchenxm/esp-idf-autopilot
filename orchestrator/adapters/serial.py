@@ -26,6 +26,7 @@ def _fatal_owner(text: str) -> str | None:
     if fatal_at < 0:
         return None
     owners = _FIRMWARE_ERROR_OWNER.findall(text[:fatal_at])
+    owners = [owner for owner in owners if owner != "crumb"]
     return owners[-1] if owners else None
 
 
