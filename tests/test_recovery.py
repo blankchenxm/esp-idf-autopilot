@@ -187,6 +187,11 @@ def test_bootstrap_subsystem_materializes_owner_before_source_gate():
     assert "_materialize_owner_source" in bootstrap
 
 
+def test_audio_authority_repair_receives_versioned_product_defaults():
+    assert "audio-pcm-v1" in HarnessNodes._product_default_instruction("audio_pipeline")
+    assert "48_000 Hz" in HarnessNodes._product_default_instruction("audio_pipeline")
+
+
 def test_material_change_resume_clears_the_historical_blocker(tmp_path: Path):
     project = tmp_path / "projects" / "demo"
     project.mkdir(parents=True)

@@ -80,6 +80,18 @@ class HarnessNodes:
         store.append_event(ExecutionEvent(event_id=store.new_id("event"), run_id=state["run_id"], event_type="node", node=node, payload=payload))
 
     @staticmethod
+    def _product_default_instruction(owner: str) -> str:
+        """Versioned Harness defaults used only when the spec leaves a product value open."""
+        if owner == "audio_pipeline":
+            return (
+                " Apply Harness product-default policy audio-pcm-v1: use "
+                "48_000 Hz, signed 16-bit PCM, stereo, and a 240-second "
+                "maximum recording duration. These are product defaults, not "
+                "claimed external-datasheet facts; keep that distinction in source."
+            )
+        return ""
+
+    @staticmethod
     def _require_owned_source(project_dir: Path, owner: str, rows: list[dict] | None = None) -> None:
         """Ensure a graph stage only consumes materialized, project-owned source.
 
@@ -824,6 +836,7 @@ class HarnessNodes:
                         f"Observed failure: {diagnostic.summary}. "
                         "Make the smallest owning change and preserve the "
                         "approved contract."
+                        + self._product_default_instruction(owner)
                     ),
                     implementation_addendum_path=(
                         self._implementation_addendum_path(state, owner)
