@@ -57,6 +57,15 @@ def test_serial_capture_routes_firmware_fatal_to_component_repair(tmp_path: Path
     assert receipt.failure.owner == "charger_monitor"
 
 
+def test_serial_capture_routes_explicit_authority_gap_to_component_repair(tmp_path: Path):
+    store = ProjectStore(tmp_path); store.ensure(); adapter = SerialAdapter(tmp_path, store, "run")
+    with patch.object(adapter, "_worker_call", return_value="E (287) audio_pipeline: AUDIO_PIPELINE_AUTHORITY_GAP missing=sample_rate\n"):
+        receipt = adapter.capture_boot("COM4", 115200, 1, "MARKER")
+    assert receipt.failure is not None
+    assert receipt.failure.category == FailureCategory.STATE_MACHINE
+    assert receipt.failure.owner == "audio_pipeline"
+
+
 def test_serial_transaction_reuses_exact_integrity_valid_receipt(tmp_path: Path):
     store = ProjectStore(tmp_path)
     store.ensure()

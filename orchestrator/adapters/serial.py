@@ -156,13 +156,16 @@ class SerialAdapter:
                 category=FailureCategory.SERIAL,
                 summary=f"serial MCP error: {error}",
             )
-        elif "CRUMB_FATAL" in text:
+        elif "CRUMB_FATAL" in text or "_AUTHORITY_GAP missing=" in text:
             failure = Failure(
                 category=FailureCategory.STATE_MACHINE,
                 summary=(
-                    f"firmware emitted CRUMB_FATAL before expected marker: {marker}"
+                    f"firmware emitted authority/state failure before expected marker: {marker}"
                 ),
-                owner=_fatal_owner(text),
+                owner=_fatal_owner(text) or (
+                    _FIRMWARE_ERROR_OWNER.findall(text)[-1]
+                    if _FIRMWARE_ERROR_OWNER.findall(text) else None
+                ),
             )
         else:
             failure = Failure(
