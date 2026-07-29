@@ -39,7 +39,13 @@ def compile_input_authority(repo_root: Path, project: str) -> dict[str, Any]:
     pins: list[dict[str, Any]] = []
     protocols: list[dict[str, Any]] = []
     for area, text in text_by_area.items():
+        secret_spans = [match.span(1) for match in _SECRET.finditer(text)]
         for match in _PART.finditer(text):
+            if any(
+                match.start() < secret_end and match.end() > secret_start
+                for secret_start, secret_end in secret_spans
+            ):
+                continue
             value = match.group(0)
             # Numeric prose such as 50 MiB does not match this pattern; retain
             # only conventional component-like tokens.
