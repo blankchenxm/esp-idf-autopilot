@@ -217,6 +217,30 @@ def test_external_part_omitted_datasheet_is_grounded_and_promoted(tmp_path: Path
     )
 
 
+def test_design_promotes_over_prepare_revision_shell(tmp_path: Path):
+    project = "prepared_revision"
+    inputs(tmp_path, project)
+    contract = valid_contract(project)
+    graph = build_design_graph(tmp_path, provider_factory=lambda: Provider(contract))
+    first = graph.invoke(
+        {"project": project, "job_id": "job-first", "revision": 1},
+        {"recursion_limit": 32},
+    )
+    assert first["mode"] == "WAITING_SPEC"
+
+    from orchestrator.design_package import create_revision
+    create_revision(tmp_path, project, 1, 2)
+
+    revised = build_design_graph(
+        tmp_path, provider_factory=lambda: Provider(contract)
+    ).invoke(
+        {"project": project, "job_id": "job-revised", "revision": 2},
+        {"recursion_limit": 32},
+    )
+    assert revised["mode"] == "WAITING_SPEC"
+    assert (tmp_path / "projects" / project / "design-package" / "rev-0002" / "input-authority.json").is_file()
+
+
 def test_design_l1_does_not_invoke_deep_reader(tmp_path: Path):
     project = "local_grounding_retry"
     inputs(tmp_path, project)
