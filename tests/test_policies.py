@@ -28,6 +28,21 @@ def test_failure_fingerprint_ignores_volatile_numbers_but_changes_on_source(tmp_
     assert first != material_fingerprint(project, {"subsystem_index": 0})
 
 
+def test_failure_fingerprint_ignores_disposable_agent_workspace_names():
+    material = "same"
+    first = failure_fingerprint(
+        "subsystem", FailureCategory.TOOL,
+        r"WinError 206 in runtime\\projects\\p\\agent-work\\crumb-button_input-a1b2c3d4\\project",
+        material,
+    )
+    second = failure_fingerprint(
+        "subsystem", FailureCategory.TOOL,
+        r"WinError 206 in runtime\\projects\\p\\agent-work\\crumb-button_input-z9y8x7w6\\project",
+        material,
+    )
+    assert first == second
+
+
 def test_recovery_budgets_are_bounded():
     assert recovery_budget(FailureCategory.SERIAL) == 3 and recovery_budget(FailureCategory.LIMITATION) == 1
 

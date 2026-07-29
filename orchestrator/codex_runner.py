@@ -69,6 +69,14 @@ def hidden_startupinfo() -> subprocess.STARTUPINFO | None:
     return startupinfo
 
 
+def hidden_powershell_command(*arguments: str) -> list[str]:
+    """Build a non-interactive PowerShell command that never requests a window."""
+    return [
+        "powershell", "-NoLogo", "-NoProfile", "-NonInteractive",
+        "-WindowStyle", "Hidden", *arguments,
+    ]
+
+
 def codex_creationflags() -> int:
     """Backward-compatible name for nested Codex CLI launchers."""
     return background_creationflags()

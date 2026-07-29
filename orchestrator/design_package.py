@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 from .storage import atomic_write_json, file_ref
 from .storage import ProjectStore
-from .codex_runner import codex_command, codex_creationflags, isolated_codex_profile, is_authentication_failure, terminate_process_tree
+from .codex_runner import codex_command, codex_creationflags, hidden_powershell_command, isolated_codex_profile, is_authentication_failure, terminate_process_tree
 from .validators import design_digest, validate_contract, validate_design_package
 from .adapters.design_grounding import DesignGroundingAdapter
 from .runtime_paths import ProjectRuntime
@@ -979,7 +979,7 @@ def _stage_grounding_context(repo_root: Path, project: str, work: Path, contract
     activation = repo_root / "activate.local.ps1"
     if not idf_path and activation.is_file():
         result = subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", f". '{activation}'; Write-Output $env:IDF_PATH"],
+            hidden_powershell_command("-ExecutionPolicy", "Bypass", "-Command", f". '{activation}'; Write-Output $env:IDF_PATH"),
             cwd=repo_root,
             text=True,
             encoding="utf-8",

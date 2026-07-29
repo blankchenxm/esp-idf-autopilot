@@ -9,7 +9,7 @@ import subprocess
 from orchestrator.adapters.hardware import HardwareAdapter
 from orchestrator.adapters.idf import IdfAdapter
 from orchestrator.adapters.serial import SerialAdapter
-from orchestrator.codex_runner import background_creationflags, codex_creationflags, codex_environment, hidden_startupinfo, isolated_codex_profile, is_authentication_failure, terminate_process_tree
+from orchestrator.codex_runner import background_creationflags, codex_creationflags, codex_environment, hidden_powershell_command, hidden_startupinfo, isolated_codex_profile, is_authentication_failure, terminate_process_tree
 from orchestrator.models import HardwareIdentity
 from orchestrator.models import FailureCategory
 from orchestrator.policies import classify_failure
@@ -28,7 +28,7 @@ def test_idf_adapter_always_uses_wrapper(tmp_path: Path):
 
     with patch("subprocess.Popen", return_value=Process()):
         receipt = adapter.version()
-    assert "idf.ps1" in receipt.command[4] and receipt.command[-1] == "--version"
+    assert any("idf.ps1" in argument for argument in receipt.command) and receipt.command[-1] == "--version"
 
 
 def test_serial_cleanup_runs_after_error(tmp_path: Path):
@@ -174,6 +174,14 @@ def test_background_children_use_hidden_startupinfo_on_windows():
         assert startupinfo.wShowWindow == subprocess.SW_HIDE
     else:
         assert startupinfo is None
+
+
+def test_harness_powershell_command_is_noninteractive_and_hidden():
+    command = hidden_powershell_command("-Command", "Write-Output ok")
+    assert command[:6] == [
+        "powershell", "-NoLogo", "-NoProfile", "-NonInteractive",
+        "-WindowStyle", "Hidden",
+    ]
 
 
 def test_isolated_codex_profile_stays_under_project_runtime_and_cleans_up(tmp_path: Path):

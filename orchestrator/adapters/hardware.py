@@ -9,7 +9,7 @@ from pathlib import Path
 import serial.tools.list_ports
 
 from ..models import Failure, FailureCategory, HardwareIdentity, HardwareSession, Receipt
-from ..codex_runner import background_creationflags, hidden_startupinfo
+from ..codex_runner import background_creationflags, hidden_powershell_command, hidden_startupinfo
 from ..storage import ProjectStore, file_ref
 
 
@@ -33,7 +33,7 @@ class HardwareAdapter:
             receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation="hardware_preflight", started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=False, inputs={"port": port, "baud": baud}, outputs={"ports": ports}, artifacts=[file_ref(log_path, self.store.project_dir, "text/plain")], failure=failure)
             self.store.write_receipt(receipt, "preflight")
             return None, receipt
-        command = ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(self.repo_root / "hwtest" / "Test-Hardware.ps1"), "-Port", chosen]
+        command = hidden_powershell_command("-ExecutionPolicy", "Bypass", "-File", str(self.repo_root / "hwtest" / "Test-Hardware.ps1"), "-Port", chosen)
         source = baseline_log.resolve() if baseline_log else None
         # A historical baseline may be retained as context, but it is never accepted as
         # current hardware fact. Every run performs a live probe of the enumerated port.
@@ -76,7 +76,7 @@ class HardwareAdapter:
         """Perform a bounded, read-only chip/MAC probe without flashing firmware."""
         started = datetime.now(timezone.utc).isoformat(); receipt_id = self.store.new_id("hardware_probe")
         log_path = self.store.logs / self.run_id / f"{receipt_id}.log"; log_path.parent.mkdir(parents=True, exist_ok=True)
-        command = ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(self.repo_root / "hwtest" / "Probe-Hardware.ps1"), "-Port", port]
+        command = hidden_powershell_command("-ExecutionPolicy", "Bypass", "-File", str(self.repo_root / "hwtest" / "Probe-Hardware.ps1"), "-Port", port)
         child_env = os.environ.copy(); child_env.pop("PYTHONPATH", None)
         process = subprocess.Popen(command, cwd=self.repo_root, env=child_env, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=background_creationflags(), startupinfo=hidden_startupinfo())
         try:

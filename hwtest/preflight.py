@@ -133,7 +133,7 @@ def _idf(*args: str, cwd: Path) -> int:
     """Run IDF only through the repository's self-activating wrapper."""
     wrapper = REPO_ROOT / "tools" / "idf.ps1"
     cmd = [
-        "powershell",
+        "powershell", "-NoLogo", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
         "-ExecutionPolicy",
         "Bypass",
         "-File",

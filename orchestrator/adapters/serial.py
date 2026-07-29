@@ -13,7 +13,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from ..models import Failure, FailureCategory, Receipt
-from ..codex_runner import background_creationflags, hidden_startupinfo
+from ..codex_runner import background_creationflags, hidden_powershell_command, hidden_startupinfo
 from ..storage import ProjectStore, file_ref
 
 
@@ -64,8 +64,9 @@ class SerialAdapter:
             "ForEach-Object { taskkill /PID $_.ProcessId /T /F | Out-Null }"
         )
         with suppress(Exception):
-            subprocess.run(["powershell", "-NoProfile", "-Command", script], stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, check=False, timeout=10)
+            subprocess.run(hidden_powershell_command("-Command", script), stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=False, timeout=10,
+                           creationflags=background_creationflags(), startupinfo=hidden_startupinfo())
 
     async def _bounded_call(self, name: str, arguments: dict, timeout_s: float) -> str:
         return await asyncio.wait_for(self._call(name, arguments, timeout_s=timeout_s), timeout=timeout_s + 5.0)

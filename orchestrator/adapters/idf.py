@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..models import Failure, FailureCategory, Receipt
-from ..codex_runner import background_creationflags, hidden_startupinfo
+from ..codex_runner import background_creationflags, hidden_powershell_command, hidden_startupinfo
 from ..policies import classify_failure
 from ..storage import ProjectStore, file_ref
 
@@ -40,7 +40,9 @@ class IdfAdapter:
         receipt_id = self.store.new_id(operation)
         log_path = self.store.logs / self.run_id / f"{receipt_id}.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        command = ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(self.wrapper), *args]
+        command = hidden_powershell_command(
+            "-ExecutionPolicy", "Bypass", "-File", str(self.wrapper), *args
+        )
         child_env = os.environ.copy()
         child_env.pop("PYTHONPATH", None)
         # idf.py starts CMake/Ninja descendants.  A timeout must clean up the

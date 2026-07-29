@@ -35,7 +35,7 @@ class AgentAction:
 class AgentAdapter:
     """Run Codex in a disposable project mirror, then import only project-owned source."""
 
-    EXCLUDED = {"build", "logs", "execution", "design-package", "managed_components", ".git"}
+    EXCLUDED = {".v", "build", "logs", "execution", "design-package", "managed_components", ".git"}
     ALLOWED_ROOT_FILES = {"CMakeLists.txt", "Kconfig.projbuild", "sdkconfig", "sdkconfig.defaults"}
 
     def __init__(self, repo_root: Path, store: ProjectStore, run_id: str, timeout: int = 30):
