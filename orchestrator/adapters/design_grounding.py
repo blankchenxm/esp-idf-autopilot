@@ -252,7 +252,10 @@ class DesignGroundingAdapter:
                     )
                 },
                 FailureCategory.DATASHEET,
-                cacheable=True,
+                # A targeted readiness repair needs a fresh probabilistic
+                # response. Reusing a same-run receipt that already omitted
+                # the requested operations only repeats the identical gap.
+                cacheable=not bool(requested_facts),
             )
             stage_receipts.append(deep_read)
             if not deep_read.success:
