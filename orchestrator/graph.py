@@ -403,6 +403,22 @@ class HarnessNodes:
         return None
 
     @staticmethod
+    def _verification_workspace(
+        project_dir: Path, state: HarnessState, batch: str
+    ) -> Path:
+        """Return a short project-local root for isolated ESP-IDF builds.
+
+        ESP-IDF creates deeply nested generated object paths.  Keeping an
+        isolated build under ``execution/verification/run-...`` exceeds the
+        practical Windows toolchain path budget before the compiler can write
+        dependency files.  This directory remains project-local and run/batch
+        unique while leaving enough path budget for generated sources.
+        """
+        run_token = str(state["run_id"]).removeprefix("run-")[:8]
+        batch_token = f"b{int(state.get('batch_index') or 0)}-{batch[:24]}"
+        return project_dir / ".v" / run_token / batch_token
+
+    @staticmethod
     def _serial_completion_marker(rows: list[dict]) -> str | None:
         """Choose a capture stop marker that cannot truncate ordered evidence.
 
@@ -677,7 +693,18 @@ class HarnessNodes:
             self._projection(state, updates); self._event({**state, **updates}, "recover", {"result": "internal_stall", "fingerprint": signature, "attempts": attempts[signature]})
             return updates
         receipt_ids: list[str] = []
-        if diagnostic.disposition == FailureDisposition.REPAIR_INTERNAL:
+        # A changed Harness fingerprint is itself material retry input.  Do
+        # not send a stale adapter/workspace failure to an owner agent and
+        # then reject that agent for leaving firmware source unchanged.
+        harness_material_changed = bool(
+            diagnostic.material_fingerprint
+            and diagnostic.material_fingerprint
+            != material_fingerprint(project_dir, state)
+        )
+        if (
+            diagnostic.disposition == FailureDisposition.REPAIR_INTERNAL
+            and not harness_material_changed
+        ):
             owner_value = diagnostic.affected_owner
             if not owner_value and target in {
                 "integration",
@@ -1049,7 +1076,7 @@ class HarnessNodes:
             if not baseline.is_file():
                 raise ValueError("firmware_selftest requires an existing ESP-IDF sdkconfig baseline")
             overrides = setup.get("kconfig_overrides") or {}
-            verify_dir = store.execution / "verification" / state["run_id"] / batch
+            verify_dir = self._verification_workspace(project_dir, state, batch)
             verify_dir.mkdir(parents=True, exist_ok=True)
             build_dir = verify_dir / "build"
             sdkconfig = verify_dir / "sdkconfig"

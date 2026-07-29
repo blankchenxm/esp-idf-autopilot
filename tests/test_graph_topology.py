@@ -3,7 +3,12 @@ from unittest.mock import patch
 import pytest
 from orchestrator.graph import build_graph
 from orchestrator.graph import HarnessNodes
-from orchestrator.models import RunMode
+from orchestrator.models import (
+    Diagnostic,
+    FailureCategory,
+    FailureDisposition,
+    RunMode,
+)
 
 
 def test_graph_contains_mandatory_gates_in_code():
@@ -13,6 +18,59 @@ def test_graph_contains_mandatory_gates_in_code():
     assert ("readiness", "subsystem") in edges and ("closure", "release") in edges
     assert ("integration", "tier_c") in edges and ("tier_c", "closure") in edges
     assert any(edge.target == "recover" for edge in graph.edges)
+
+
+def test_isolated_verification_workspace_uses_short_project_local_path(tmp_path: Path):
+    project = tmp_path / "projects" / "crumb"
+    workspace = HarnessNodes(tmp_path)._verification_workspace(
+        project,
+        {"run_id": "run-12345678abcdef", "batch_index": 12},
+        "charger_monitor",
+    )
+
+    assert workspace == project / ".v" / "12345678" / "b12-charger_monitor"
+    assert "execution" not in workspace.parts
+
+
+def test_recovery_retries_when_harness_material_changed(tmp_path: Path):
+    project = tmp_path / "projects" / "crumb"
+    state = {
+        "project": "crumb",
+        "project_dir": str(project),
+        "run_id": "run-test",
+        "design_digest": "0" * 64,
+        "subsystem_index": 0,
+        "failure": {
+            "category": "build",
+            "summary": "verification build failed",
+            "owner": "charger_monitor",
+            "retryable": True,
+            "fingerprint": "old-fingerprint",
+            "evidence": [],
+        },
+        "diagnostic": Diagnostic(
+            code="SUBSYSTEM_BUILD_FAILED",
+            cause=FailureCategory.BUILD,
+            disposition=FailureDisposition.REPAIR_INTERNAL,
+            responsible_party="implementation_agent",
+            affected_owner="charger_monitor",
+            summary="verification build failed",
+            material_fingerprint="obsolete-harness-fingerprint",
+        ).model_dump(mode="json"),
+        "failed_node": "subsystem",
+        "failure_attempts": {},
+        "receipt_ids": [],
+        "progress_seq": 1,
+    }
+    nodes = HarnessNodes(tmp_path)
+    nodes._projection = lambda *_args, **_kwargs: None
+    nodes._event = lambda *_args, **_kwargs: None
+
+    updates = nodes.recover(state)
+
+    assert updates["failure"] is None
+    assert updates["recovery_target"] == "subsystem"
+    assert "mode" not in updates
 
 
 def test_tier_c_interrupt_projects_waiting_state_before_interrupt(tmp_path: Path):
