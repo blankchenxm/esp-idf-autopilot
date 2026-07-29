@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import traceback
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -637,7 +638,16 @@ class HarnessNodes:
                     }.get(node, FailureCategory.UNKNOWN)
                 material = material_fingerprint(project_dir, state); signature = failure_fingerprint(node, category, summary, material)
                 started = datetime.now(timezone.utc).isoformat(); receipt_id = store.new_id("failure")
-                log_path = store.logs / state["run_id"] / f"{receipt_id}.log"; log_path.parent.mkdir(parents=True, exist_ok=True); log_path.write_text(summary + "\n", encoding="utf-8")
+                log_path = store.logs / state["run_id"] / f"{receipt_id}.log"; log_path.parent.mkdir(parents=True, exist_ok=True)
+                # Unknown Harness exceptions must retain their traceback.  A
+                # one-line Windows PermissionError has no actionable path and
+                # turns a deterministic repair into guesswork.
+                detail = (
+                    traceback.format_exc()
+                    if source_receipt is None and typed_diagnostic is None
+                    else summary + "\n"
+                )
+                log_path.write_text(detail, encoding="utf-8")
                 owner = (
                     (typed_diagnostic.affected_owner if typed_diagnostic else None)
                     or (source_receipt.failure.owner if source_receipt and source_receipt.failure else None)
