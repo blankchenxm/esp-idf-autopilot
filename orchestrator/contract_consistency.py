@@ -3,11 +3,23 @@
 from __future__ import annotations
 
 import fnmatch
+import re
 from pathlib import Path
 from typing import Any
 
 
 _SOURCE_ROOTS = ("main", "components")
+_EVIDENCE_SHA256_TOKEN = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
+
+
+def _is_evidence_locator_token(token: str) -> bool:
+    """Return whether a token locates evidence rather than implementation.
+
+    Source assertions bind values to project source.  Provider workspaces may
+    also leak their extracted-datasheet filename or a receipt hash into that
+    list; neither can (or should) be represented by firmware source.
+    """
+    return token == "datasheet-extracted.txt" or bool(_EVIDENCE_SHA256_TOKEN.fullmatch(token))
 
 
 def validate_source_facts(
@@ -55,7 +67,11 @@ def validate_source_facts(
                 errors.append(f"implementation fact {fact_id!r} source assertion matches no project source: {pattern}")
                 continue
             text = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in matched)
-            missing = [str(token) for token in assertion.get("required_tokens", []) if str(token) not in text]
+            required_tokens = [
+                str(token) for token in assertion.get("required_tokens", [])
+                if not _is_evidence_locator_token(str(token))
+            ]
+            missing = [token for token in required_tokens if token not in text]
             if missing:
                 errors.append(f"implementation fact {fact_id!r} source assertion is missing tokens {missing} in {pattern}")
     return errors

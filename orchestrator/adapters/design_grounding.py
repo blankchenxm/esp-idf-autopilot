@@ -276,7 +276,11 @@ class DesignGroundingAdapter:
                         quote = str(fact.get("quote") or "")
                         try:
                             anchor = normalized_quote_anchor(extracted, quote)
-                            tokens = [str(token) for token in fact.get("source_tokens", []) if str(token)]
+                            tokens = [
+                                str(token) for token in fact.get("source_tokens", [])
+                                if str(token) and str(token) != "datasheet-extracted.txt"
+                                and not str(token).lower().startswith("sha256:")
+                            ]
                             if not tokens:
                                 raise ValueError("deep-reader fact lacks source tokens")
                             accepted.append({

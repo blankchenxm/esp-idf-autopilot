@@ -21,3 +21,15 @@ def test_implementation_fact_rejects_missing_source_token_before_flash(tmp_path:
         "source_assertions": [{"path_glob": "main/*.c", "required_tokens": ["48000"]}],
     }]}
     assert "missing tokens" in validate_source_facts(tmp_path, contract)[0]
+
+
+def test_implementation_fact_does_not_require_evidence_locators_in_source(tmp_path: Path):
+    source = tmp_path / "components" / "charger"; source.mkdir(parents=True)
+    (source / "charger.c").write_text("#define BQ25180YBGR 1\n", encoding="utf-8")
+    contract = {"implementation_facts": [{
+        "id": "charger.part", "subsystem_id": "charger",
+        "source_assertions": [{"path_glob": "components/charger/*.c", "required_tokens": [
+            "BQ25180YBGR", "datasheet-extracted.txt", "sha256:" + "a" * 64,
+        ]}],
+    }]}
+    assert validate_source_facts(tmp_path, contract) == []
