@@ -531,6 +531,21 @@ class HarnessNodes:
         return setup
 
     @staticmethod
+    def _serial_timeout(rows: list[dict], setup: dict[str, Any]) -> int:
+        """Apply the versioned Harness capture default for firmware selftests.
+
+        An explicit, frozen ``timeout_s`` remains authoritative.  Older
+        contracts often omit it; their former generic 15-second capture is too
+        short for legitimate reset/recovery selftests (for example a complete
+        flash scan).  ``selftest-capture-v1`` gives those isolated images a
+        bounded 60-second default without changing normal-boot behavior.
+        """
+        declared = max((int(row.get("timeout_s", 0)) for row in rows), default=0)
+        if declared > 0:
+            return declared
+        return 60 if setup.get("kind") == "firmware_selftest" else 15
+
+    @staticmethod
     def _evidence_kinds(row: dict, available: set[str]) -> list[str]:
         """Reject a declared evidence contract that this node did not produce."""
         declared = row.get("evidence_contract")
@@ -1270,7 +1285,7 @@ class HarnessNodes:
         serial = serial_adapter.capture_boot(
             state["port"],
             state["baud"],
-            max(row.get("timeout_s", 15) for row in rows),
+            self._serial_timeout(rows, setup),
             marker,
             idempotency_key=self._transaction_key(
                 state,

@@ -67,6 +67,17 @@ def test_repeated_unchanged_failure_becomes_stall(tmp_path: Path):
     assert updates["mode"] == RunMode.FAULTED.value and updates["blocker"]["kind"] == "internal_stall"
 
 
+def test_firmware_selftest_uses_bounded_harness_capture_default(tmp_path: Path):
+    nodes = HarnessNodes(tmp_path)
+    rows = [{"expected": {"marker": "PASS"}}]
+
+    assert nodes._serial_timeout(rows, {"kind": "firmware_selftest"}) == 60
+    assert nodes._serial_timeout(rows, {"kind": "normal_boot"}) == 15
+    assert nodes._serial_timeout(
+        [{"timeout_s": 37}], {"kind": "firmware_selftest"}
+    ) == 37
+
+
 def test_complete_projection_never_retains_historical_blocker(tmp_path: Path):
     nodes = HarnessNodes(tmp_path); current = state(tmp_path)
     current["blocker"] = {"kind": "stall", "summary": "old", "evidence": "x", "needed": "change"}
