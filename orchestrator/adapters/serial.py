@@ -136,6 +136,24 @@ class SerialAdapter:
         log_path.write_text(text, encoding="utf-8")
         marker_found = bool(marker and marker in text)
         success = error is None and (not marker or marker_found)
-        failure = None if success else Failure(category=FailureCategory.SERIAL, summary=(f"serial MCP error: {error}" if error else f"expected marker missing: {marker}"))
+        if success:
+            failure = None
+        elif error is not None:
+            failure = Failure(
+                category=FailureCategory.SERIAL,
+                summary=f"serial MCP error: {error}",
+            )
+        elif "CRUMB_FATAL" in text:
+            failure = Failure(
+                category=FailureCategory.STATE_MACHINE,
+                summary=(
+                    f"firmware emitted CRUMB_FATAL before expected marker: {marker}"
+                ),
+            )
+        else:
+            failure = Failure(
+                category=FailureCategory.SERIAL,
+                summary=f"expected marker missing: {marker}",
+            )
         receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation="serial_boot_capture", started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success, inputs={"port": port, "baud": baud, "timeout": timeout, "expected_marker": marker, "idempotency_key": idempotency_key}, outputs={"marker_found": marker_found, "bounded_capture": not bool(marker)}, artifacts=[file_ref(log_path, self.store.project_dir, "text/plain")], failure=failure)
         self.store.write_receipt(receipt, "serial"); return receipt

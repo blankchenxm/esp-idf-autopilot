@@ -48,6 +48,14 @@ def test_serial_capture_excludes_monitor_status_line_from_firmware_evidence(tmp_
     assert log.count("MARKER") == 1
 
 
+def test_serial_capture_routes_firmware_fatal_to_component_repair(tmp_path: Path):
+    store = ProjectStore(tmp_path); store.ensure(); adapter = SerialAdapter(tmp_path, store, "run")
+    with patch.object(adapter, "_worker_call", return_value="E crumb: CRUMB_FATAL\n"):
+        receipt = adapter.capture_boot("COM4", 115200, 1, "MARKER")
+    assert receipt.failure is not None
+    assert receipt.failure.category == FailureCategory.STATE_MACHINE
+
+
 def test_serial_transaction_reuses_exact_integrity_valid_receipt(tmp_path: Path):
     store = ProjectStore(tmp_path)
     store.ensure()
