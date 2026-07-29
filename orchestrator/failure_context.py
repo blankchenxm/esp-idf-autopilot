@@ -7,7 +7,13 @@ from .storage import ProjectStore
 
 
 def select_owner_failure_logs(store: ProjectStore, run_id: str, owner: str, limit: int = 4) -> tuple[Path, ...]:
-    """Return only current-run immutable failure artifacts owned by this agent."""
+    """Return current-run diagnostics the responsible implementation can act on.
+
+    Boundary failure receipts contain a short policy summary. The actionable
+    compiler/flash transcript is commonly attached to the diagnostic evidence
+    copied from the source receipt, so include both without crossing owner or
+    run boundaries.
+    """
     matches: list[tuple[str, Path]] = []
     for receipt_path in (store.receipts / "failure").glob("*.json"):
         try:
@@ -17,9 +23,20 @@ def select_owner_failure_logs(store: ProjectStore, run_id: str, owner: str, limi
         failure = receipt.get("failure") or {}
         if receipt.get("run_id") != run_id or failure.get("owner") != owner:
             continue
-        for artifact in receipt.get("artifacts", []):
+        diagnostic = (receipt.get("outputs") or {}).get("diagnostic") or {}
+        artifacts = list(receipt.get("artifacts", []))
+        if isinstance(diagnostic, dict):
+            artifacts.extend(diagnostic.get("evidence", []))
+        for artifact in artifacts:
             path = store.project_dir / str(artifact.get("path", ""))
             if path.is_file():
                 matches.append((str(receipt.get("finished_at", "")), path))
     matches.sort(reverse=True)
-    return tuple(path for _, path in matches[:limit])
+    selected: list[Path] = []
+    seen: set[Path] = set()
+    for _, path in matches:
+        if path not in seen:
+            selected.append(path); seen.add(path)
+        if len(selected) == limit:
+            break
+    return tuple(selected)

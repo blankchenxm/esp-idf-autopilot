@@ -8,6 +8,11 @@ def test_failure_signal_parity():
     for value, expected in samples.items(): assert classify_failure(value) == expected
 
 
+def test_undeclared_sdk_symbol_is_an_api_failure_before_synchronization_terms():
+    output = "error: 'I2C_CLK_FREQ_DEFAULT' undeclared; xSemaphoreTake(lock, 0)"
+    assert classify_failure(output) == FailureCategory.API
+
+
 def test_progress_fingerprint_changes_on_cursor():
     assert progress_fingerprint({"run_id": "r", "cursor": "a"}) != progress_fingerprint({"run_id": "r", "cursor": "b"})
 

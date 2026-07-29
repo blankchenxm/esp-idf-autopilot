@@ -142,6 +142,23 @@ def test_owner_failure_context_excludes_other_runs_and_owners(tmp_path: Path):
     assert [path.name for path in select_owner_failure_logs(store, "run-1", "sensor")] == ["keep.log"]
 
 
+def test_owner_failure_context_includes_actionable_diagnostic_evidence(tmp_path: Path):
+    store = ProjectStore(tmp_path); store.ensure()
+    boundary = tmp_path / "logs" / "run-1" / "boundary.log"
+    compiler = tmp_path / "logs" / "run-1" / "compiler.log"
+    boundary.parent.mkdir(parents=True); boundary.write_text("summary", encoding="utf-8")
+    compiler.write_text("error: undeclared", encoding="utf-8")
+    failure = Failure(category=FailureCategory.API, summary="build exited 2", owner="sensor")
+    receipt = Receipt(
+        receipt_id="f1", run_id="run-1", operation="subsystem_failure",
+        started_at="a", finished_at="b", success=False,
+        artifacts=[file_ref(boundary, tmp_path, "text/plain")], failure=failure,
+        outputs={"diagnostic": {"evidence": [file_ref(compiler, tmp_path, "text/plain").model_dump(mode="json")] }},
+    )
+    store.write_receipt(receipt, "failure")
+    assert [path.name for path in select_owner_failure_logs(store, "run-1", "sensor")] == ["compiler.log", "boundary.log"]
+
+
 def test_failed_run_archive_remains_resolvable(tmp_path: Path):
     project = tmp_path / "demo"; store = ProjectStore(project); store.ensure()
     log = project / "logs" / "old-run" / "failure.log"; log.parent.mkdir(parents=True); log.write_text("failure evidence", encoding="utf-8")

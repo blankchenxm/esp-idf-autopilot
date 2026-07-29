@@ -26,7 +26,7 @@ SIGNALS: list[tuple[FailureCategory, re.Pattern[str]]] = [
     (FailureCategory.TOOL, re.compile(r"mandatory MCP capability probe|TaskGroup", re.I)),
     (FailureCategory.REGISTRY, re.compile(r"registry|component.*not found|mcp", re.I)),
     (FailureCategory.LINK, re.compile(r"undefined reference|multiple definition|linker", re.I)),
-    (FailureCategory.API, re.compile(r"implicit declaration|incompatible.*argument|no member named", re.I)),
+    (FailureCategory.API, re.compile(r"implicit declaration|incompatible.*argument|no member named|undeclared|not declared|does not name a type", re.I)),
     (FailureCategory.FLASH, re.compile(r"failed to connect|write timeout|flash.*failed", re.I)),
     (FailureCategory.SERIAL, re.compile(r"access is denied|port.*busy|serial|marker.*missing", re.I)),
     (FailureCategory.WATCHDOG, re.compile(r"watchdog|task_wdt", re.I)),
