@@ -638,10 +638,11 @@ product_policy for user-visible state behavior, system_orchestration for lifecyc
 integration only for the final cross-component node. Do not make one ESP-IDF facility a public
 component merely because it exists; GPIO/I2C/SPI/I2S/NVS/Wi-Fi/HTTP/SNTP are internal capabilities
 unless they own a stable shared boundary. Propose batches during design:
-For every external I2C part, emit exactly one board_transport_bindings entry with its owner,
-bus="i2c", controller, and clock_hz. Those values must be explicitly present in the
-input-authority record; if either is absent, emit a typed USER_DECISION rather than choosing a
-common default. GPIO pins and a device datasheet do not authorize an I2C controller or clock.
+Represent peripheral buses through protocol-neutral resource_requirements and resource_capabilities.
+Adapters normalize datasheet limits and local ESP-IDF capabilities into constraints/candidates; the
+Harness selects one compatible unclaimed candidate and records resource_allocations with provenance.
+Do not create per-protocol decision flows. Ask for a user decision only when no candidate satisfies
+the evidence-bound constraints or multiple policy-distinct choices remain.
 external-chip/register/DMA/audio/storage/destructive or ambiguous tests must be isolated; verified
 non-destructive compatible owners must set batch_compatible=true and share one contiguous
 dependency-ordered batch. Runtime never changes this decision. Every Tier C item must independently declare test_id, owner, expected,

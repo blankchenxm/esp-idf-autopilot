@@ -45,20 +45,6 @@ def test_authority_extracts_chinese_gpio_phrase_adjacent_to_a_field() -> None:
         assert compile_input_authority(project_root, "p")["pins"][0]["gpio"] == 27
 
 
-def test_authority_extracts_explicit_i2c_controller_and_clock() -> None:
-    import tempfile
-    with tempfile.TemporaryDirectory() as directory:
-        project_root = Path(directory)
-        (project_root / "requirements").mkdir(); (project_root / "connections").mkdir()
-        (project_root / "requirements" / "p.md").write_text("part X1Y2", encoding="utf-8")
-        (project_root / "connections" / "p.md").write_text(
-            "BQ bus: I2C controller 1, 400 kHz\n", encoding="utf-8"
-        )
-        assert compile_input_authority(project_root, "p")["i2c_configs"] == [{
-            "controller": 1, "clock_hz": 400_000, "source": "connections", "offset": 8,
-        }]
-
-
 def test_typed_unknown_routing_does_not_inspect_prose() -> None:
     active, resolved = reconcile_grounding_unknowns({}, [
         {"code": "IMPLEMENTATION_READINESS", "owner": "camera", "category": "implementation_readiness", "phase": "execution", "authority": "external_fact", "severity": "blocking_before_implementation", "required_operations": ["capture"], "resolution": None},

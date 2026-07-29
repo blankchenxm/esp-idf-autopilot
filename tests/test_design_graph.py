@@ -12,7 +12,7 @@ from orchestrator.adapters.registry import RegistryAdapter
 from orchestrator.design_graph import build_design_graph
 from orchestrator.design_package import DesignDraft
 from orchestrator.storage import ProjectStore
-from tests.test_design_contract import valid_contract, valid_v15_contract
+from tests.test_design_contract import valid_contract
 
 
 def inputs(root: Path, project: str) -> None:
@@ -239,52 +239,6 @@ def test_design_promotes_over_prepare_revision_shell(tmp_path: Path):
     )
     assert revised["mode"] == "WAITING_SPEC"
     assert (tmp_path / "projects" / project / "design-package" / "rev-0002" / "input-authority.json").is_file()
-
-
-def test_design_materializes_single_input_i2c_binding(tmp_path: Path):
-    project = "input_i2c"
-    inputs(tmp_path, project)
-    (tmp_path / "connections" / f"{project}.md").write_text(
-        "I2C controller 0, 400 kHz\n", encoding="utf-8"
-    )
-    contract = valid_v15_contract(project)
-    (tmp_path / "requirements" / f"{project}.md").write_text(
-        "SENSOR1\n", encoding="utf-8"
-    )
-    contract["verification"][0].update({
-        "test_setup": {"kind": "normal_boot"},
-        "stimulus": {"kind": "none"},
-    })
-    contract["subsystems"][0].update({
-        "classification": "external_part", "part_number": "SENSOR1",
-        "registry_search_required": True,
-        "responsibility_layer": "device_driver",
-        "hardware_resources": ["I2C"],
-        "isolation_required": True,
-        "isolation_reason": "register readback",
-        "batch_compatible": False,
-    })
-    contract["component_selections"] = [{
-        "subsystem_id": "probe", "status": "pending", "exact_search": "SENSOR1",
-        "capability_search": "ESP-IDF SENSOR1 driver", "decision": "custom",
-        "decision_reason": "no candidate selected", "provider_receipt_id": "",
-    }]
-    result = build_design_graph(
-        tmp_path,
-        provider_factory=lambda: Provider(contract),
-        grounding_factory=grounding_factory(tmp_path, project),
-    ).invoke(
-        {"project": project, "job_id": "job-input-i2c", "revision": None},
-        {"recursion_limit": 32},
-    )
-    assert result["mode"] == "WAITING_SPEC"
-    generated = json.loads(
-        (Path(result["design_dir"]) / "execution-contract.json").read_text(encoding="utf-8")
-    )
-    assert generated["board_transport_bindings"] == [{
-        "owner": "probe", "bus": "i2c", "controller": 0,
-        "clock_hz": 400_000, "origin": "DERIVED_INPUT_AUTHORITY",
-    }]
 
 
 def test_design_l1_does_not_invoke_deep_reader(tmp_path: Path):
