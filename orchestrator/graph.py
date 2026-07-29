@@ -219,7 +219,29 @@ class HarnessNodes:
             existing_facts=design_facts,
         )
         receipt_ids: list[str] = []
-        facts = design_facts
+        # Targeted datasheet reads are probabilistic. Preserve facts anchored
+        # by earlier successful reads in this run so a later response cannot
+        # erase already-grounded operation coverage.
+        prior_targeted: list[dict[str, Any]] = []
+        readiness_receipts = store.receipts / "readiness"
+        if readiness_receipts.is_dir():
+            for path in readiness_receipts.glob("*.json"):
+                try:
+                    prior = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if (
+                    prior.get("success") is not True
+                    or prior.get("operation") != "datasheet_artifact_inspect"
+                ):
+                    continue
+                for item in prior.get("outputs", {}).get("implementation_facts", []):
+                    if isinstance(item, dict) and item.get("subsystem_id") == owner:
+                        prior_targeted.append({
+                            **item,
+                            "provider_receipt_id": prior.get("receipt_id"),
+                        })
+        facts = design_facts + prior_targeted
         if not readiness.ready:
             sheet = next(
                 (
@@ -265,7 +287,7 @@ class HarnessNodes:
                 for item in receipt.outputs.get("implementation_facts", [])
                 if isinstance(item, dict)
             ]
-            facts = design_facts + targeted
+            facts = design_facts + prior_targeted + targeted
             readiness = assess_implementation_readiness(
                 owner=owner,
                 required_operations=required_operations,
