@@ -18,7 +18,9 @@
 
 ---
 
-## Build your ESP-IDF project in three steps
+## What does Autopilot do?
+
+Autopilot helps you build your ESP-IDF project in three simple steps:
 
 1. **Connect your hardware** — a breadboard prototype or your own ESP32 PCB, over USB/serial.
 2. **Write down the features you want** — the parts, wiring, behavior, and success criteria.
@@ -36,7 +38,7 @@ That is the purpose of ESP-IDF Autopilot.
 
 Connect an ESP32 project—whether it lives on a breadboard or a custom PCB—and describe its features. Autopilot creates a reviewable design, implements each component, then repeatedly builds, flashes, reads serial/runtime evidence, diagnoses failures, and repairs the smallest responsible part. The result is not merely generated source code: it is a complete ESP-IDF project with hardware evidence attached to the run.
 
-## Background: why a harness?
+## Background
 
 LLMs have made Arduino-style experimentation dramatically easier. Native MCU SDKs remain essential, however, when a system needs precise control and a maintainable multi-component architecture: ESP-IDF for ESP32, STM32Cube for STM32, or Nordic's SDKs for nRF devices. These SDKs are powerful precisely because they expose the details that a real embedded product must manage—and those details are difficult for both newcomers and one-shot code generation.
 
