@@ -156,6 +156,20 @@ def test_readiness_custom_driver_defaults_host_lifecycle_after_hardware_groundin
 
     assert result.ready is True
     assert result.missing_facts == []
+    assert result.operation_authorities == [
+        {
+            "operation": "identify", "kind": "hardware_fact",
+            "source_kind": "datasheet", "provider_receipt_id": "receipt-identify",
+        },
+        {
+            "operation": "read", "kind": "hardware_fact",
+            "source_kind": "datasheet", "provider_receipt_id": "receipt-read",
+        },
+        {
+            "operation": "reset_recovery", "kind": "local_idf_default",
+            "policy_id": "esp_idf_host_lifecycle", "policy_version": "1",
+        },
+    ]
 
 
 def test_high_risk_operation_requires_authoritative_source_even_if_fact_exists():

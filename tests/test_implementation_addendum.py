@@ -48,6 +48,13 @@ def test_addendum_is_immutable_and_bound_to_design_owner_and_receipts(
             "receipt_id": "reader-1",
             "sha256": "b" * 64,
         }],
+        operation_authorities=[
+            {"operation": "read", "kind": "component_selection"},
+            {
+                "operation": "reset_recovery", "kind": "hardware_fact",
+                "source_kind": "datasheet", "provider_receipt_id": "reader-1",
+            },
+        ],
     )
 
     path = store.write_implementation_addendum(addendum)
@@ -76,6 +83,10 @@ def test_addendum_digest_detects_tampering(tmp_path: Path):
             "receipt_id": "reader-2",
             "sha256": "c" * 64,
         }],
+        operation_authorities=[{
+            "operation": "charger_config", "kind": "hardware_fact",
+            "source_kind": "datasheet", "provider_receipt_id": "reader-2",
+        }],
     )
     addendum["implementation_facts"][0]["value"] = "changed"
 
@@ -84,5 +95,63 @@ def test_addendum_digest_detects_tampering(tmp_path: Path):
             addendum,
             design_digest="a" * 64,
             owner="charger",
+        )
+    )
+
+
+def test_addendum_binds_default_host_lifecycle_to_local_idf_receipt():
+    addendum = build_implementation_addendum(
+        design_digest="a" * 64,
+        owner="sensor",
+        selection={"decision": "custom", "covered_operations": []},
+        required_operations=["initialize", "read", "reset_recovery"],
+        implementation_facts=[{
+            **_fact("read"), "subsystem_id": "sensor",
+        }],
+        source_receipts=[
+            {"receipt_id": "reader-1", "sha256": "b" * 64},
+            {"receipt_id": "idf-version-1", "sha256": "d" * 64},
+        ],
+        operation_authorities=[
+            {
+                "operation": "initialize", "kind": "local_idf_default",
+                "policy_id": "esp_idf_host_lifecycle", "policy_version": "1",
+                "provider_receipt_id": "idf-version-1", "provider_operation": "idf_version",
+            },
+            {
+                "operation": "read", "kind": "hardware_fact",
+                "source_kind": "datasheet", "provider_receipt_id": "reader-1",
+            },
+            {
+                "operation": "reset_recovery", "kind": "local_idf_default",
+                "policy_id": "esp_idf_host_lifecycle", "policy_version": "1",
+                "provider_receipt_id": "idf-version-1", "provider_operation": "idf_version",
+            },
+        ],
+    )
+
+    assert validate_implementation_addendum(
+        addendum, design_digest="a" * 64, owner="sensor"
+    ) == []
+
+
+def test_addendum_rejects_default_authority_for_high_risk_operation():
+    addendum = build_implementation_addendum(
+        design_digest="a" * 64,
+        owner="charger",
+        selection={"decision": "custom", "covered_operations": []},
+        required_operations=["charger_config"],
+        implementation_facts=[],
+        source_receipts=[{"receipt_id": "idf-version-1", "sha256": "d" * 64}],
+        operation_authorities=[{
+            "operation": "charger_config", "kind": "local_idf_default",
+            "policy_id": "esp_idf_host_lifecycle", "policy_version": "1",
+            "provider_receipt_id": "idf-version-1", "provider_operation": "idf_version",
+        }],
+    )
+
+    assert "default authority is not permitted for operation: charger_config" in (
+        validate_implementation_addendum(
+            addendum, design_digest="a" * 64, owner="charger"
         )
     )

@@ -17,6 +17,10 @@ AUTHORITATIVE_SOURCE_KINDS = frozenset({"datasheet", "registry", "local_idf"})
 DEFAULT_CUSTOM_SOFTWARE_OPERATIONS = frozenset({
     "initialize", "detect_sample_loss", "reset_recovery",
 })
+DEFAULT_CUSTOM_SOFTWARE_POLICY = {
+    "policy_id": "esp_idf_host_lifecycle",
+    "policy_version": "1",
+}
 
 
 @dataclass(frozen=True)
@@ -26,6 +30,7 @@ class ImplementationReadiness:
     required_operations: list[str]
     component_covered_operations: list[str]
     fact_covered_operations: list[str]
+    operation_authorities: list[dict[str, str]]
     missing_facts: list[str]
     reader_requests: list[dict[str, Any]]
 
@@ -55,6 +60,7 @@ def assess_implementation_readiness(
         operation for operation in required if operation in declared_coverage
     ]
     fact_covered: list[str] = []
+    fact_authorities: dict[str, dict[str, str]] = {}
     for operation in required:
         if operation in component_covered:
             continue
@@ -64,6 +70,7 @@ def assess_implementation_readiness(
             if str(item.get("subsystem_id") or owner) == owner
             and str(item.get("parameter") or "") == operation
         ]
+        facts = [item for item in facts if item.get("provider_receipt_id")]
         if not facts:
             continue
         if operation in HIGH_RISK_OPERATIONS and not any(
@@ -73,23 +80,49 @@ def assess_implementation_readiness(
         ):
             continue
         fact_covered.append(operation)
+        selected_fact = next(
+            (
+                item for item in facts
+                if str(item.get("source_kind") or "") in AUTHORITATIVE_SOURCE_KINDS
+                and bool(item.get("provider_receipt_id"))
+            ),
+            facts[0],
+        )
+        fact_authorities[operation] = {
+            "operation": operation,
+            "kind": "hardware_fact",
+            "source_kind": str(selected_fact.get("source_kind") or ""),
+            "provider_receipt_id": str(
+                selected_fact.get("provider_receipt_id") or ""
+            ),
+        }
     # Default policy for a custom external-part driver: once an authoritative
     # hardware/interface fact exists, these are host-side ESP-IDF lifecycle
     # behaviours.  They do not require a fictitious datasheet parameter with
     # the same software-operation name.  High-risk operations remain subject
     # to explicit authoritative operation facts above.
+    default_covered: list[str] = []
     if selection.get("decision") == "custom" and any(
         str(item.get("subsystem_id") or owner) == owner
         and str(item.get("source_kind") or "") in AUTHORITATIVE_SOURCE_KINDS
+        and bool(item.get("provider_receipt_id"))
         for item in existing_facts
     ):
         for operation in required:
-            if operation in DEFAULT_CUSTOM_SOFTWARE_OPERATIONS and operation not in fact_covered:
-                fact_covered.append(operation)
+            if (
+                operation in DEFAULT_CUSTOM_SOFTWARE_OPERATIONS
+                and operation not in component_covered
+                and operation not in fact_covered
+            ):
+                default_covered.append(operation)
     missing = [
         operation
         for operation in required
-        if operation not in component_covered and operation not in fact_covered
+        if (
+            operation not in component_covered
+            and operation not in fact_covered
+            and operation not in default_covered
+        )
     ]
     requests = [
         {
@@ -99,12 +132,28 @@ def assess_implementation_readiness(
         }
         for operation in missing
     ]
+    authorities: list[dict[str, str]] = []
+    for operation in required:
+        if operation in component_covered:
+            authorities.append({
+                "operation": operation,
+                "kind": "component_selection",
+            })
+        elif operation in fact_authorities:
+            authorities.append(fact_authorities[operation])
+        elif operation in default_covered:
+            authorities.append({
+                "operation": operation,
+                "kind": "local_idf_default",
+                **DEFAULT_CUSTOM_SOFTWARE_POLICY,
+            })
     return ImplementationReadiness(
         owner=owner,
         ready=not missing,
         required_operations=required,
         component_covered_operations=component_covered,
         fact_covered_operations=fact_covered,
+        operation_authorities=authorities,
         missing_facts=missing,
         reader_requests=requests,
     )

@@ -315,6 +315,26 @@ class HarnessNodes:
         }
         if selection and selection.get("provider_receipt_id"):
             source_receipt_ids.add(str(selection["provider_receipt_id"]))
+        operation_authorities = [dict(item) for item in readiness.operation_authorities]
+        default_authorities = [
+            item for item in operation_authorities
+            if item.get("kind") == "local_idf_default"
+        ]
+        if default_authorities:
+            idf_receipt_id = next((
+                receipt_id
+                for receipt_id in state.get("receipt_ids", [])
+                if any(
+                    json.loads(path.read_text(encoding="utf-8")).get("operation") == "idf_version"
+                    for path in store.receipts.rglob(f"{receipt_id}.json")
+                )
+            ), None)
+            if not idf_receipt_id:
+                raise ValueError("local-IDF default policy requires an idf_version receipt")
+            source_receipt_ids.add(str(idf_receipt_id))
+            for authority in default_authorities:
+                authority["provider_receipt_id"] = str(idf_receipt_id)
+                authority["provider_operation"] = "idf_version"
         source_receipts: list[dict[str, str]] = []
         for receipt_id in sorted(source_receipt_ids):
             paths = list(store.receipts.rglob(f"{receipt_id}.json"))
@@ -345,6 +365,7 @@ class HarnessNodes:
             required_operations=required_operations,
             implementation_facts=facts,
             source_receipts=source_receipts,
+            operation_authorities=operation_authorities,
         )
         errors = validate_implementation_addendum(
             addendum,
