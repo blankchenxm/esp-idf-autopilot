@@ -1091,10 +1091,34 @@ class HarnessNodes:
         if index >= len(batches):
             return {"phase": "integration", "cursor": "STAGE 2:subsystems:pass", "next_action": "run integration plan", "progress_seq": state["progress_seq"] + 1}
         owners = batches[index]
-        rows = [
+        all_rows = [
             row for owner in owners for row in expected_for_owner(contract, owner)
             if row.get("tier") in {"A", "B"}
         ]
+        # Legacy 1.2 contracts may contain several isolated selftest setups
+        # for one owner.  A setup is an image boundary, not an implementation
+        # boundary: execute each frozen setup serially, preserving one build /
+        # flash / serial evidence set per setup instead of rejecting a valid
+        # owner after its source was materialized.
+        setup_groups: list[list[dict]] = []
+        for row in all_rows:
+            setup_key = json.dumps(
+                row.get("test_setup") or {"kind": "normal_boot"}, sort_keys=True
+            )
+            group = next(
+                (candidate for candidate in setup_groups if json.dumps(
+                    candidate[0].get("test_setup") or {"kind": "normal_boot"},
+                    sort_keys=True,
+                ) == setup_key),
+                None,
+            )
+            if group is None:
+                group = []; setup_groups.append(group)
+            group.append(row)
+        setup_index = int(state.get("verification_setup_index", 0))
+        if setup_index >= len(setup_groups) and setup_groups:
+            raise ValueError("verification setup cursor exceeds frozen setup groups")
+        rows = setup_groups[setup_index] if setup_groups else []
         if not rows:
             implementation_receipts: list[str] = []
             for owner in owners:
@@ -1108,7 +1132,7 @@ class HarnessNodes:
         for owner in owners:
             implementation_receipts.extend(self._materialize_owner_source(
                 state, project_dir, store, owner,
-                [row for row in rows if row.get("owner") == owner],
+                [row for row in all_rows if row.get("owner") == owner],
             ))
         addenda, addendum_errors = self._validated_implementation_addenda(
             state, set(owners)
@@ -1251,7 +1275,8 @@ class HarnessNodes:
             kinds = self._evidence_kinds(row, {"build_receipt", "flash_receipt", "serial_log", "firmware_hash", "hardware_identity"})
             evidence = Evidence(evidence_id=store.new_id("evidence"), run_id=state["run_id"], design_digest=state["design_digest"], requirement_ids=[row["requirement_id"]], test_id=row["test_id"], owner=row["owner"], tier=Tier(row["tier"]), expected=row["expected"], actual=actual, verdict=Verdict.PASS, receipt_ids=[build.receipt_id, flash.receipt_id, serial.receipt_id], evidence_kinds=kinds, firmware_sha256=firmware_hash, hardware_identity_key="|".join(str(state["hardware_identity"].get(k) or "") for k in ("chip", "mac", "usb_serial", "board_profile")))
             store.write_evidence(evidence, "subsystem"); evidence_ids.append(evidence.evidence_id)
-        updates = {"batch_index": index + 1, "subsystem_index": state.get("subsystem_index", 0) + len(owners), "receipt_ids": state.get("receipt_ids", []) + implementation_receipts + target_receipts + attempt_receipts, "evidence_ids": state.get("evidence_ids", []) + evidence_ids, "cursor": f"STAGE 2:{'+'.join(owners)}:pass", "next_action": ("execute next verification batch" if index + 1 < len(batches) else "run integration plan"), "progress_seq": state["progress_seq"] + 1}
+        has_next_setup = setup_index + 1 < len(setup_groups)
+        updates = {"batch_index": index if has_next_setup else index + 1, "verification_setup_index": setup_index + 1 if has_next_setup else 0, "subsystem_index": state.get("subsystem_index", 0) + (0 if has_next_setup else len(owners)), "receipt_ids": state.get("receipt_ids", []) + implementation_receipts + target_receipts + attempt_receipts, "evidence_ids": state.get("evidence_ids", []) + evidence_ids, "cursor": f"STAGE 2:{'+'.join(owners)}:setup-{setup_index + 1}:pass", "next_action": ("execute next verification setup" if has_next_setup else ("execute next verification batch" if index + 1 < len(batches) else "run integration plan")), "progress_seq": state["progress_seq"] + 1}
         self._projection(state, updates); return updates
 
     def subsystem_route(self, state: HarnessState) -> str:

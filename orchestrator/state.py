@@ -26,6 +26,7 @@ class HarnessState(TypedDict, total=False):
     subsystem_index: int
     subsystems: list[str]
     batch_index: int
+    verification_setup_index: int
     verification_batches: list[list[str]]
     release_smoke_complete: bool
     tier_c_items: list[dict[str, Any]]
