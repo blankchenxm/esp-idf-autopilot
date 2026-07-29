@@ -302,6 +302,22 @@ def test_successful_registry_grounding_is_reused_by_cache(tmp_path: Path):
     assert first.receipt_id == second.receipt_id and calls == ["vendor/sensor", "temperature sensor"]
 
 
+def test_readiness_grounding_does_not_reuse_design_receipt(tmp_path: Path):
+    project = "category_cache"; inputs(tmp_path, project)
+    store = ProjectStore(tmp_path / "projects" / project); store.ensure()
+    design = DesignGroundingAdapter(tmp_path, store, "design-run")
+    readiness = DesignGroundingAdapter(
+        tmp_path, store, "execution-run", receipt_category="readiness"
+    )
+
+    design_receipt = design.local_idf_selection("probe", "ESP-IDF", "GPIO")
+    readiness_receipt = readiness.local_idf_selection("probe", "ESP-IDF", "GPIO")
+
+    assert design_receipt.receipt_id != readiness_receipt.receipt_id
+    assert (store.receipts / "design" / f"{design_receipt.receipt_id}.json").is_file()
+    assert (store.receipts / "readiness" / f"{readiness_receipt.receipt_id}.json").is_file()
+
+
 def test_registry_search_fetches_discovered_candidate_details():
     details = []
     registry = RegistryAdapter(

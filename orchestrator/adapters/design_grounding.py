@@ -91,7 +91,14 @@ class DesignGroundingAdapter:
 
     def _cached(self, operation: str, inputs: dict[str, Any]) -> Receipt | None:
         key = digest({"operation": operation, "inputs": inputs})
-        for path in sorted(self.store.receipts.rglob("*.json"), reverse=True):
+        # Receipts are immutable and category-specific.  A readiness reader
+        # must materialize its own receipt even when Design already performed
+        # an identical acquisition; later stage-receipt references are bound
+        # to this adapter's category.
+        for path in sorted(
+            (self.store.receipts / self.receipt_category).glob("*.json"),
+            reverse=True,
+        ):
             try:
                 value = json.loads(path.read_text(encoding="utf-8"))
                 if value.get("success") is not True or value.get("operation") != operation:
