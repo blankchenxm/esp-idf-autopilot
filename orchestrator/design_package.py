@@ -420,7 +420,12 @@ def _preserve_complete_contract_rows(
         prior = prior_contract.get(name)
         if not isinstance(prior, list):
             continue
-        if not isinstance(current, list):
+        # The structured-output schema represents an omitted collection as an
+        # empty list.  In a bounded repair that is a partial-patch sentinel,
+        # not authority to erase an already synthesized product contract.
+        # An explicit row-level change remains possible because non-empty
+        # collections still merge by their stable identity below.
+        if not isinstance(current, list) or (not current and prior):
             value[name] = copy.deepcopy(prior)
             continue
         previous = {
@@ -441,7 +446,7 @@ def _preserve_complete_contract_rows(
     prior_rows = prior_contract.get("verification")
     current_rows = value.get("verification")
     if isinstance(prior_rows, list):
-        if not isinstance(current_rows, list):
+        if not isinstance(current_rows, list) or (not current_rows and prior_rows):
             value["verification"] = copy.deepcopy(prior_rows)
         else:
             prior_by_test = {

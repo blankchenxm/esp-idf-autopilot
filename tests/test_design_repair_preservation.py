@@ -55,3 +55,19 @@ def test_repair_allows_explicit_verification_evidence_and_batch_fixes() -> None:
         "required_kinds": ["serial_log"],
     }
     assert result.execution_contract["subsystems"][0]["verification_batch"] == "contiguous"
+
+
+def test_repair_preserves_required_collections_when_provider_returns_empty_patch() -> None:
+    prior = valid_contract()
+    repaired = valid_contract()
+    repaired["requirements"] = []
+    repaired["subsystems"] = []
+    repaired["verification"] = []
+
+    result = _preserve_complete_contract_rows(
+        DesignDraft("# Spec", repaired, [], []), prior
+    )
+
+    assert result.execution_contract["requirements"] == prior["requirements"]
+    assert result.execution_contract["subsystems"] == prior["subsystems"]
+    assert result.execution_contract["verification"] == prior["verification"]
