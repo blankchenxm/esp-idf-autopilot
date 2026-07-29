@@ -311,24 +311,29 @@ def _pause(project: str, revision: int, reason: str) -> dict:
     recorded = json.loads(thread_ref.read_text(encoding="utf-8"))
     thread_id = str(recorded.get("thread_id") or f"{project}:rev-{revision:04d}")
     config = {"configurable": {"thread_id": thread_id}}
-    with SqliteSaver.from_conn_string(str(runtime.checkpoints)) as saver:
-        graph = build_graph(REPO_ROOT, saver); snapshot = graph.get_state(config)
-        if not snapshot.values:
-            raise RuntimeError("no checkpoint state exists to pause")
-        if snapshot.values.get("mode") in {"COMPLETE", "BLOCKED", "FAULTED", "PAUSED"}:
-            return dict(snapshot.values)
-        if any(getattr(task, "interrupts", ()) for task in snapshot.tasks):
-            raise RuntimeError("checkpoint is waiting for a declared human gate; submit that response instead of pausing")
-        if len(snapshot.next) != 1:
-            raise RuntimeError(f"pause requires exactly one safe next node, got {list(snapshot.next)!r}")
-        next_node = snapshot.next[0]
-        nodes = HarnessNodes(REPO_ROOT)
-        updates = nodes.pause_updates(dict(snapshot.values), next_node, reason)
-        # This is LangGraph's state API, not a checkpoint-file edit.  The
-        # control node has no outgoing edge, so it clears the scheduled work.
-        graph.update_state(config, updates, as_node="pause_control")
-        nodes.record_pause(dict(snapshot.values), updates)
-        return dict(graph.get_state(config).values)
+    # Pause must serialize with graph execution.  Updating a checkpoint while
+    # a live worker holds the runner lock can project PAUSED while that worker
+    # continues a stale node and prevents the later resume from acquiring the
+    # same lock.
+    with _runner_lock(project_dir, revision):
+        with SqliteSaver.from_conn_string(str(runtime.checkpoints)) as saver:
+            graph = build_graph(REPO_ROOT, saver); snapshot = graph.get_state(config)
+            if not snapshot.values:
+                raise RuntimeError("no checkpoint state exists to pause")
+            if snapshot.values.get("mode") in {"COMPLETE", "BLOCKED", "FAULTED", "PAUSED"}:
+                return dict(snapshot.values)
+            if any(getattr(task, "interrupts", ()) for task in snapshot.tasks):
+                raise RuntimeError("checkpoint is waiting for a declared human gate; submit that response instead of pausing")
+            if len(snapshot.next) != 1:
+                raise RuntimeError(f"pause requires exactly one safe next node, got {list(snapshot.next)!r}")
+            next_node = snapshot.next[0]
+            nodes = HarnessNodes(REPO_ROOT)
+            updates = nodes.pause_updates(dict(snapshot.values), next_node, reason)
+            # This is LangGraph's state API, not a checkpoint-file edit.  The
+            # control node has no outgoing edge, so it clears the scheduled work.
+            graph.update_state(config, updates, as_node="pause_control")
+            nodes.record_pause(dict(snapshot.values), updates)
+            return dict(graph.get_state(config).values)
 
 
 def _main(argv: list[str] | None = None) -> int:
