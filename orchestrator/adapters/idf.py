@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..models import Failure, FailureCategory, Receipt
-from ..codex_runner import background_creationflags
+from ..codex_runner import background_creationflags, hidden_startupinfo
 from ..policies import classify_failure
 from ..storage import ProjectStore, file_ref
 
@@ -56,6 +56,7 @@ class IdfAdapter:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             creationflags=background_creationflags(),
+            startupinfo=hidden_startupinfo(),
         )
         timed_out = False
         try:

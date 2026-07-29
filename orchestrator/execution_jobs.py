@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .codex_runner import background_creationflags
+from .codex_runner import background_creationflags, hidden_startupinfo
 from .runtime_paths import ProjectRuntime
 from .storage import atomic_write_json
 
@@ -142,6 +142,7 @@ def _spawn(
             background_creationflags()
             | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
         )
+        kwargs["startupinfo"] = hidden_startupinfo()
     else:
         kwargs["start_new_session"] = True
     try:

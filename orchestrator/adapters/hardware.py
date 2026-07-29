@@ -9,7 +9,7 @@ from pathlib import Path
 import serial.tools.list_ports
 
 from ..models import Failure, FailureCategory, HardwareIdentity, HardwareSession, Receipt
-from ..codex_runner import background_creationflags
+from ..codex_runner import background_creationflags, hidden_startupinfo
 from ..storage import ProjectStore, file_ref
 
 
@@ -45,7 +45,7 @@ class HardwareAdapter:
         # The preflight program itself serializes this shared workspace and board
         # access, so allow its bounded lock/build/flash/serial transaction to end
         # normally rather than externally killing it midway through cleanup.
-        process = subprocess.Popen(command, cwd=self.repo_root, env=child_env, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=background_creationflags())
+        process = subprocess.Popen(command, cwd=self.repo_root, env=child_env, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=background_creationflags(), startupinfo=hidden_startupinfo())
         timed_out = False
         try:
             output, _ = process.communicate(timeout=600)
@@ -78,7 +78,7 @@ class HardwareAdapter:
         log_path = self.store.logs / self.run_id / f"{receipt_id}.log"; log_path.parent.mkdir(parents=True, exist_ok=True)
         command = ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(self.repo_root / "hwtest" / "Probe-Hardware.ps1"), "-Port", port]
         child_env = os.environ.copy(); child_env.pop("PYTHONPATH", None)
-        process = subprocess.Popen(command, cwd=self.repo_root, env=child_env, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=background_creationflags())
+        process = subprocess.Popen(command, cwd=self.repo_root, env=child_env, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=background_creationflags(), startupinfo=hidden_startupinfo())
         try:
             output, _ = process.communicate(timeout=45)
             returncode = process.returncode

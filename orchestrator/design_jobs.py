@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .runtime_paths import ProjectRuntime
+from .codex_runner import hidden_startupinfo
 from .storage import atomic_write_json
 
 
@@ -187,6 +188,7 @@ def _spawn_worker(repo_root: Path, runtime: ProjectRuntime, record: dict) -> sub
             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
             | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         )
+        kwargs["startupinfo"] = hidden_startupinfo()
     else:
         kwargs["start_new_session"] = True
     try:

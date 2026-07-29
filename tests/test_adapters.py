@@ -9,7 +9,7 @@ import subprocess
 from orchestrator.adapters.hardware import HardwareAdapter
 from orchestrator.adapters.idf import IdfAdapter
 from orchestrator.adapters.serial import SerialAdapter
-from orchestrator.codex_runner import background_creationflags, codex_creationflags, codex_environment, isolated_codex_profile, is_authentication_failure, terminate_process_tree
+from orchestrator.codex_runner import background_creationflags, codex_creationflags, codex_environment, hidden_startupinfo, isolated_codex_profile, is_authentication_failure, terminate_process_tree
 from orchestrator.models import HardwareIdentity
 from orchestrator.models import FailureCategory
 from orchestrator.policies import classify_failure
@@ -164,6 +164,16 @@ def test_all_background_children_use_no_window_creation_flags_on_windows():
         assert flags & getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
     else:
         assert flags == 0
+
+
+def test_background_children_use_hidden_startupinfo_on_windows():
+    startupinfo = hidden_startupinfo()
+    if os.name == "nt":
+        assert startupinfo is not None
+        assert startupinfo.dwFlags & subprocess.STARTF_USESHOWWINDOW
+        assert startupinfo.wShowWindow == subprocess.SW_HIDE
+    else:
+        assert startupinfo is None
 
 
 def test_isolated_codex_profile_stays_under_project_runtime_and_cleans_up(tmp_path: Path):

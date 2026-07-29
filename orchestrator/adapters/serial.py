@@ -13,7 +13,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from ..models import Failure, FailureCategory, Receipt
-from ..codex_runner import background_creationflags
+from ..codex_runner import background_creationflags, hidden_startupinfo
 from ..storage import ProjectStore, file_ref
 
 
@@ -83,7 +83,7 @@ class SerialAdapter:
                    "--run-id", self.run_id]
         process = subprocess.Popen(command, cwd=self.repo_root, text=True, encoding="utf-8", errors="replace",
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   creationflags=background_creationflags())
+                                   creationflags=background_creationflags(), startupinfo=hidden_startupinfo())
         try:
             output, _ = process.communicate(timeout=timeout_s + 5.0)
         except subprocess.TimeoutExpired:
