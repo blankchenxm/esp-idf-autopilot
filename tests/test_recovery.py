@@ -203,6 +203,21 @@ def test_audio_authority_repair_receives_versioned_product_defaults():
     assert "48_000 Hz" in HarnessNodes._product_default_instruction("audio_pipeline")
 
 
+def test_project_kconfig_override_must_be_declared(tmp_path: Path):
+    project = tmp_path / "demo"
+    component = project / "components" / "owner"
+    component.mkdir(parents=True)
+    (component / "Kconfig").write_text(
+        "config DEMO_TEST\n    bool \"test\"\n", encoding="utf-8"
+    )
+    assert HarnessNodes._missing_project_kconfig_overrides(
+        project, {"CONFIG_DEMO_TEST": "y"}
+    ) == []
+    assert HarnessNodes._missing_project_kconfig_overrides(
+        project, {"CONFIG_DEMO_MISSING": "y"}
+    ) == ["CONFIG_DEMO_MISSING"]
+
+
 def test_material_change_resume_clears_the_historical_blocker(tmp_path: Path):
     project = tmp_path / "projects" / "demo"
     project.mkdir(parents=True)

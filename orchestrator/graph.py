@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -50,6 +51,25 @@ class HarnessNodes:
 
     def _contract(self, state: HarnessState) -> dict:
         return json.loads((Path(state["design_dir"]) / "execution-contract.json").read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _missing_project_kconfig_overrides(
+        project_dir: Path, overrides: dict[str, Any]
+    ) -> list[str]:
+        """Reject project selftest flags that ESP-IDF would silently ignore."""
+        prefix = "CONFIG_" + project_dir.name.upper() + "_"
+        requested = {
+            symbol for symbol in overrides
+            if isinstance(symbol, str) and symbol.startswith(prefix)
+        }
+        declared: set[str] = set()
+        for path in (project_dir / "components").glob("*/Kconfig"):
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            declared.update(
+                prefix + match.group(1)
+                for match in re.finditer(r"(?m)^\s*config\s+([A-Z0-9_]+)\s*$", text)
+            )
+        return sorted(requested - declared)
 
     def _integration_owner(self, state: HarnessState) -> str:
         owners = [
@@ -1250,6 +1270,23 @@ class HarnessNodes:
             if not baseline.is_file():
                 raise ValueError("firmware_selftest requires an existing ESP-IDF sdkconfig baseline")
             overrides = setup.get("kconfig_overrides") or {}
+            missing_kconfig = self._missing_project_kconfig_overrides(
+                project_dir, overrides
+            )
+            if missing_kconfig:
+                raise DiagnosticFailure(Diagnostic(
+                    code="PROJECT_KCONFIG_OVERRIDE_UNDECLARED",
+                    cause=FailureCategory.API,
+                    disposition=FailureDisposition.REPAIR_INTERNAL,
+                    responsible_party="implementation_agent",
+                    affected_owner=owners[0],
+                    subsystem_id=owners[0],
+                    summary=(
+                        "verification Kconfig override is not declared by "
+                        f"project source: {missing_kconfig}"
+                    ),
+                    retry_scope="owner_and_consumers",
+                ))
             verify_dir = self._verification_workspace(project_dir, state, batch)
             verify_dir.mkdir(parents=True, exist_ok=True)
             build_dir = verify_dir / "build"
