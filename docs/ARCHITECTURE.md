@@ -32,6 +32,15 @@ Components expose lifecycle-oriented semantic APIs (`init`, operation, status, r
 `main/` composes them. Integration validates the actual concurrent/sustained call pattern rather
 than treating an isolated component call as system evidence.
 
+There is no target component count. Create a component only for a stable independent boundary:
+device/register/transport ownership, shared resource arbitration, persistent state, external
+protocol/security, reusable transformation, or independently scheduled lifecycle/failure
+isolation. Do not create one for a marker, one-owner helper, parallel simulation, or policy fragment.
+The component-architecture gate compares the typed API/resource/dependency manifest with resolved
+CMake/source ownership, rejects unconsumed/test-only production components and duplicate resources,
+and prevents `main/` from reaching low-level device headers. Components are linked into one image;
+they are not flashed separately.
+
 Execution-contract 1.2 separates design choice from runtime mechanics: the model proposes owner
 verification batches and rare Tier C items, the deterministic validator accepts or rejects them,
 and LangGraph executes only the frozen result. Owner-specific views reduce context without becoming

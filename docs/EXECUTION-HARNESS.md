@@ -11,18 +11,34 @@ initialize
  -> environment_and_hardware_preflight
  -> design_subgraph
  -> spec_approval_interrupt
- -> bind_approved_design
- -> refresh_hardware_session
- -> implementation_readiness (per owner/batch)
- -> verification_batch_subgraph (DAG loop)
- -> recover (conditional classified retry/repair/stall boundary)
- -> integration_subgraph
+ -> invariant_gate
+ -> current_schema_gate
+ -> operation_authority
+ -> bind_approved_design_and_hardware
+ -> verification_image_plan
+ -> implementation_materialize
+ -> implementation_completeness
+ -> source_validate -> configure -> build -> flash -> observe -> evaluate -> evidence_commit
+ -> component_architecture
+ -> production_composition
+ -> integration_prepare -> configure -> build -> flash -> observe -> evaluate -> evidence_commit
  -> tier_c_artifact_materialization
  -> tier_c_interrupt (conditional)
  -> requirements_closure
- -> release_subgraph
+ -> release_prepare -> fullclean -> configure -> build -> flash -> observe -> validate
  -> finalize
 ```
+
+`schemas/harness-invariants.json` is the hard-rule authority. Each `HR-*` row names its
+producer, callable validator, required Receipt kinds, negative scenarios, disposition, and
+protected downstream gates. `invariant_gate` resolves every validator implementation and checks
+graph reachability, dominance, state-guarded branches, recovery edges, and the transaction chain.
+Closure consumes registry IDs, not a separately maintained prose checklist.
+
+Only schema 1.7 is executable for a new release-authoritative run.
+`schemas/schema-capabilities.json` is the sole feature-admission matrix. Older packages remain
+readable for audit, but Execution returns typed `DESIGN_REVISION_REQUIRED`; migration creates an
+unapproved revision plus `migration-report.json` and never edits the approved legacy package.
 
 Revision mode creates a new design revision, computes affected components/consumers/tests, redoes
 only affected bring-up/integration work, then always performs current-revision closure and a fresh
@@ -47,9 +63,13 @@ implementation patch, verifies that material actually changed, then retries the 
 node. Retry budgets are category-specific. Repeating the same normalized failure without a
 material change produces `FAULTED/internal_stall`, not `BLOCKED` or another blind retry.
 
-Checkpoint nodes represent transaction/retry boundaries, not every helper function. Integration
-tests and subsystems are data-driven. `run-state.json` is atomically regenerated from checkpoint
-and committed facts for the legacy Stop hook; an agent never writes it.
+Every external effect class has its own checkpoint: materialize, completeness/source validation,
+configure, build, flash, observation, evaluation, and Evidence commit. Integration and Release
+reuse those primitives with typed scopes. Observation never writes a PASS verdict. Each Receipt
+stores both its idempotency hash and the canonical authority tuple that produced it: run, approved
+design digest, hardware identity, relevant material fingerprint, operation, and exact scope.
+`run-state.json` is atomically regenerated from checkpoint and committed facts for the legacy Stop
+hook; an agent never writes it.
 
 Build, flash, and serial transactions carry a key derived from run/design authority, hardware,
 material fingerprint, owner/test scope, and firmware hash. On node replay the adapter reuses only
@@ -64,16 +84,16 @@ history are excluded. They also receive the immutable implementation addendum. A
 component/version must be adopted behind the semantic owner wrapper; custom code is limited to
 uncovered operations. Failure context is selected from current-run failure Receipts by owner.
 
-Implementation readiness is one deterministic gate. It compares `required_operations` with final
-component coverage and existing receipt-bound facts. A complete adopted component proceeds without
-a reader. A component gap or custom implementation requests only named missing facts from the
-replaceable targeted reader. Destructive/safety operations require authoritative receipt sources.
-The resulting addendum binds design digest, owner, selection/version, coverage, facts, Receipt
-paths/hashes, and its own digest. Replays reuse an integrity-valid addendum.
+`operation_authority` compiles only the schema 1.7 typed operation table. Owner blanket coverage,
+English-text inference, parameter-name matching, and product-policy defaults for hardware
+operations are forbidden. `implementation_completeness` rejects missing symbols, unlinked
+assertions, explicit unsupported stubs, and absent runtime probes before configure or flash.
+Targeted readers may fill only named capability gaps and bind their immutable provider Receipts.
 
-Several owners may share one build/flash/serial Receipt only when schema 1.2 freezes a validated
-batch. Every verification row still produces independent Evidence. Tier C failure routes through
-declared retry owners, affected batches, Integration, and a newly hashed artifact.
+Components, verification rows, images, and flash transactions are separate concepts. Compatible
+rows share an image identity computed from source, Kconfig, setup, isolation, resources, and
+stimulus; every row still receives independent Evidence. Component count therefore does not imply
+flash count. Incompatible or destructive setups remain isolated.
 
 Schema 1.3 adds deterministic pre-flash source/contract assertions for
 grounded implementation facts. It permits only explicitly `batch_compatible`
@@ -87,16 +107,34 @@ Official LangGraph persistence stores state per thread at each graph step, enabl
 resume. Human interrupts require the same thread ID and restart their node, so all code before an
 interrupt is idempotent.
 
+Control supervision is event driven. `event_seq` is monotonic, repeated progress is coalesced, and
+only `MODEL_ACTION_REQUIRED` or a terminal/human transition can wake a model. `status` is read-only;
+`await-event --after-seq N` blocks in the control plane without creating recurring model turns.
+Every Harness-owned model call starts from a fresh deterministic `ModelContextEnvelope`, is scoped
+to one node/owner, stores only bounded log excerpts plus artifact hashes, and enforces byte, token,
+reasoning, and tool-call budgets. `orchestrator.cli report` separates model/cached tokens,
+model-versus-runner tool calls, non-model progress, and suppressed progress.
+
 `start` and `resume` launch a detached project-scoped execution worker under
 `runtime/projects/<project>/execution-jobs/`. The caller returns immediately; the worker runs until
 `COMPLETE`, a typed terminal failure, or the next Spec/Tier C interrupt. Spec and Tier C both
 project their waiting mode before raising the interrupt, so status never presents a waiting graph
 as generic continuous work.
 
+Status also reconciles the active pointer, job record, worker PID, checkpoint database, selected
+thread, and compatibility projection. A dead nonterminal worker becomes `INTERRUPTED` and writes
+an immutable reconciliation record; ambiguous nonterminal threads require `--thread-id`.
+
 Closure requires current-run PASS evidence for every requirement *and* every declared A/B
 verification identity, integration-test identity, and Tier C identity. Broad requirement coverage
 cannot hide a skipped test. It also revalidates every required implementation addendum, source
 Receipt hash, operation coverage, and source assertion; integration and release repeat that check.
+
+Production composition is not a marker check. Static entrypoint/call/edge analysis is followed by
+a selftest-off Integration image that must emit correlated typed step/operation/edge observations
+from the declared production orchestrator. Tier C materialization starts only after producer
+Receipts bind the same run, design, final Integration firmware, test, operation, delivery method,
+and correlation key.
 
 The thread registry records every project/revision thread and terminal mode. Default resume selects
 the sole nonterminal thread; ambiguity requires `--thread-id`. COMPLETE clears live blocker/failure
@@ -104,6 +142,10 @@ fields. An evidence correction is append-only and demotes a contradicted termina
 
 Current-run artifacts stay directly readable. `archive-runs` compresses only historical failed-run
 raw logs/build trees, keeps Receipt/Evidence facts, and writes a hash-bound archive index.
+
+Verification roots live under ignored `projects/<project>/.v/`, are retention-bounded, and are
+checked with local free space before expensive work. Harness cleanup resolves every deletion below
+that exact root and never prunes approved packages or immutable Receipt/Evidence indexes.
 
 Project lifecycle operations are recoverable control transactions. `snapshot-project` writes an
 external hash manifest plus project/runtime copies without copying user-owned inputs or shared

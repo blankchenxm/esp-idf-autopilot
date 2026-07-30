@@ -52,10 +52,22 @@ must never use capacity recovery, erase-all, or an unscoped prefix to remove pro
 When retained test data can consume bounded record slots, the component exposes a constrained
 test-prefix cleanup operation and records the removed count in runtime evidence.
 
-Subsystem PASS requires clean build, flash, fresh serial observation, and expected/actual judgment.
-Validated batches may share those Receipts, but verdicts remain owner/test-specific. Integration
-adds concurrent/sustained/restart/failure/resource call patterns. Release uses a fresh
-selftest-off build and proves build/flash/runtime evidence refer to that same firmware hash.
+Verification PASS consumes distinct configure, build, flash, raw-observation, evaluation, and
+Evidence-commit Receipts. A raw observation can never create its own verdict. Every replayable
+Receipt stores an authority-derived idempotency key and the readable run/design/hardware/material/
+operation/scope tuple; reuse also re-hashes every artifact.
+
+Compatible rows may share one normalized image's configure/build/flash/observation Receipts, but
+verdicts remain owner/test-specific. Image identity includes source, Kconfig, setup, isolation,
+resources, and stimulus, so component count is not flash count. Integration adds
+concurrent/sustained/restart/failure/resource call patterns through the production orchestrator.
+
+Release is a separate fresh transaction: prepare an attempt root, explicit fullclean, selftest-off
+configure, build, flash, observe, and validate. It must execute a declared core production scenario
+and reject READY-only output, selftest markers, unsupported operations, secret-like plaintext,
+test junk/destructive paths, and fatal/reset loops. Fullclean/configure/build/flash/observation/
+scenario Receipts, application binary, firmware hash, design digest, and hardware identity must
+agree before terminal `COMPLETE`.
 
 Execution-time implementation addenda are authority inputs to evidence, not PASS evidence
 themselves. Before build/flash and again at closure/release, the Harness verifies their design

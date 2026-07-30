@@ -26,20 +26,47 @@ clean Crumb run should begin only after the P0 acceptance suite passes.
 | Failure traceback, serial transcript, and fatal-owner routing | `DONE` | Typed failures retain actionable evidence across adapters and recovery. |
 | Targeted Datasheet reread and fact retention | `DONE` | Failed/incomplete targeted reads are not silently reused and valid prior facts survive repair. |
 | Existing source reuse before implementation repair | `DONE` | Compliant source can proceed to verification without a default rewrite. |
-| Operation authority | `PARTIAL` | Addenda bind operation authority, but several blanket/inferred coverage paths remain. |
-| Production runtime flow | `PARTIAL` | Schema 1.6 and source-token checks exist; executable reachability and runtime proof do not. |
-| Integration uses the production path | `OPEN` | A parallel selftest/simulation can still emit all expected integration markers. |
-| Tier C admission and missing-artifact handling | `PARTIAL` | Missing artifacts cannot PASS, but artifacts do not yet require a declared producer/delivery chain. |
-| Verification batching and flash minimization | `PARTIAL` | Frozen batches exist, but newer schemas currently fall back to singleton owner batches. |
-| Worker liveness and state reconciliation | `OPEN` | A dead worker can leave a `CONTINUOUS` projection or stale active-job pointer. |
-| Clean project lifecycle and generated-file hygiene | `OPEN` | Isolated build trees can pollute the worktree and consume unbounded local space. |
-| Hard-rule registry and graph conformance | `OPEN` | Normative rules are spread across prose, schemas, validators, prompts, and nodes with no machine-checked coverage ledger. |
-| Side-effect checkpoint granularity | `OPEN` | Implementation, configure, build, flash, serial observation, and Evidence commit are still combined inside large replay boundaries. |
-| Typed recovery and lineage retry budget | `PARTIAL` | Typed diagnostics exist, but text classification, material-fingerprint churn, and repeated model repair can still bypass bounded recovery. |
-| Model polling and progress observation | `OPEN` | Unchanged status/wait cycles can repeatedly wake a model with the same cached conversation context. |
-| Model context minimization | `OPEN` | Model calls can receive broad contracts, raw logs, and accumulated conversation history instead of a deterministic node-specific context packet. |
-| Release cleanliness and production behavior | `PARTIAL` | Selftest-off configuration and firmware hashes are checked, but explicit fullclean, forbidden-runtime checks, and a real product operation are not all proven. |
-| Schema enforcement and legacy migration | `OPEN` | Critical invariants can be bypassed by an approved legacy schema revision that predates their required fields. |
+| Operation authority | `DONE` | Schema 1.7 typed operations, exact capability authorities, non-stub/source/link probes, and an immutable authority addendum execute before implementation or hardware work. |
+| Production runtime flow | `DONE` | Static entrypoint/edge reachability is followed by selftest-off runtime step/operation/edge observations. |
+| Integration uses the production path | `DONE` | Integration rejects firmware-selftest setup and requires the declared production entrypoint, APIs, and correlated observations. |
+| Tier C admission and missing-artifact handling | `DONE` | Every nonphysical item has a producer/delivery/correlation contract and final-image Receipt chain before interruption. |
+| Verification batching and flash minimization | `DONE` | All current-schema rows normalize to compatible image identities independently of component count. |
+| Worker liveness and state reconciliation | `DONE` | Status atomically reconciles pointer/job/PID/checkpoint/thread/projection and records dead workers as `INTERRUPTED`. |
+| Clean project lifecycle and generated-file hygiene | `DONE` | Ignored `.v/` roots are free-space checked, retention-bounded, and pruned only below their resolved project root. |
+| Hard-rule registry and graph conformance | `DONE` | `harness-invariants.json` binds callable validators, producers, Receipts, scenarios, dispositions, and protected graph gates. |
+| Side-effect checkpoint granularity | `DONE` | Materialize, completeness/source, configure, build, flash, observe, evaluate, and Evidence commit are separate authority-bound idempotent nodes. |
+| Typed recovery and lineage retry budget | `DONE` | Untyped faults cannot reach agents; stable lineage/material ledgers allow one model repair and invalidate only declared descendants. |
+| Model polling and progress observation | `DONE` | Monotonic/coalesced control events wake models only for meaningful typed transitions; `status` is read-only. |
+| Model context minimization | `DONE` | Fresh digest-bound owner packets enforce scope, redaction, byte/token/reasoning/tool budgets, and bounded artifact excerpts. |
+| Release cleanliness and production behavior | `DONE` | Explicit fresh-root fullclean/configure/build/flash/observe/validate nodes require a core production scenario and reject forbidden states. |
+| Schema enforcement and legacy migration | `DONE` | The capability matrix admits only schema 1.7 for new authoritative runs; migration creates an unapproved reported revision. |
+
+## Implementation completion record
+
+All framework items in this TODO are implemented in the generic Harness. The
+machine-checkable evidence is:
+
+- registries: `schemas/harness-invariants.json`,
+  `schemas/harness-scenarios.json`, and `schemas/schema-capabilities.json`;
+- graph/runtime: explicit transaction nodes in `orchestrator/graph.py`,
+  authority-bound keys in `orchestrator/transactions.py`, typed recovery in
+  `orchestrator/failure_lineage.py`, and worker reconciliation in
+  `orchestrator/execution_jobs.py`;
+- deterministic validators: operation authority, production composition,
+  Tier C producer chain, component architecture, image normalization,
+  generated-root hygiene, Release runtime, and graph conformance;
+- regression fixtures: control events, model context/accounting, hardening
+  scenarios, transaction crash matrix, topology, Design migration, adapters,
+  storage integrity, Release negative gates, and run reporting;
+- final generic suite: `313 passed`; Python compilation, JSON parsing, graph
+  conformance, and `git diff --check` also pass;
+- token replay: `benchmarks/harness-token-replay.json`; this is a deterministic
+  budget ceiling, while a later clean physical E2E must record measured usage;
+- human audit summary: `docs/HARNESS-HARDENING-IMPLEMENTATION.md`.
+
+This completion does **not** authorize resuming the old Crumb run. Its source,
+approved package, runtime, hardware, and user inputs remain an untouched audit
+fixture until the user starts a new clean test.
 
 ## Ordered implementation plan
 
