@@ -1681,7 +1681,7 @@ class HarnessNodes:
                     cause=FailureCategory.INTEGRATION,
                     disposition=FailureDisposition.REPAIR_INTERNAL,
                     responsible_party="implementation_agent",
-                    affected_owner="integration",
+                    affected_owner=integration_owner,
                     test_id=row.get("test_id") or row.get("id"),
                     summary=f"integration {row.get('test_id', row.get('id', 'unnamed'))} failed: {'; '.join(reasons)}",
                     evidence=serial.artifacts,
@@ -1726,7 +1726,7 @@ class HarnessNodes:
                         cause=FailureCategory.INTEGRATION,
                         disposition=FailureDisposition.REPAIR_INTERNAL,
                         responsible_party="implementation_agent",
-                        affected_owner="integration",
+                        affected_owner=integration_owner,
                         test_id=verification["test_id"],
                         summary=(
                             f"integration verification "
