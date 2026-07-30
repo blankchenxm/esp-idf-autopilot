@@ -1600,6 +1600,13 @@ class HarnessNodes:
             raise ValueError("integration test plan is empty")
         project_dir, store = self._context(state)
         self._require_owned_source(project_dir, "integration", tests)
+        integration_owner = self._integration_owner(state)
+        # Integration owners are excluded from component verification batches,
+        # but still need the same bound readiness/addendum transaction before
+        # their source assertions are evaluated.
+        _, readiness_receipts = self._ensure_implementation_readiness(
+            state, project_dir, store, integration_owner
+        )
         addenda, addendum_errors = self._validated_implementation_addenda(state)
         source_errors = addendum_errors + validate_source_facts(
             project_dir,
@@ -1634,8 +1641,7 @@ class HarnessNodes:
         )
         if not flash.success:
             raise ReceiptFailure(flash)
-        evidence_ids = []; receipt_ids = [build.receipt_id, flash.receipt_id]; firmware_hash = idf.firmware_hash(project_dir)
-        integration_owner = self._integration_owner(state)
+        evidence_ids = []; receipt_ids = readiness_receipts + [build.receipt_id, flash.receipt_id]; firmware_hash = idf.firmware_hash(project_dir)
         integration_rows = [
             row
             for row in contract.get("verification", [])
