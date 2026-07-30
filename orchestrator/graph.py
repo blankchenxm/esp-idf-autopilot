@@ -71,6 +71,22 @@ class HarnessNodes:
             )
         return sorted(requested - declared)
 
+    @staticmethod
+    def _release_selftest_symbol(contract: dict[str, Any]) -> str:
+        """Normalize legacy string and structured selftest-off release config."""
+        setting = contract.get("release", {}).get("selftest_config")
+        if isinstance(setting, dict):
+            if len(setting) != 1:
+                raise ValueError("release.selftest_config must name one disabled Kconfig symbol")
+            symbol, requested = next(iter(setting.items()))
+            if not isinstance(symbol, str) or str(requested) not in {"", "n"}:
+                raise ValueError("release.selftest_config must request a disabled Kconfig symbol")
+            return symbol
+        symbol, separator, requested = str(setting or "").partition("=")
+        if not symbol or (separator and requested not in {"", "n"}):
+            raise ValueError("release.selftest_config must request a disabled Kconfig symbol")
+        return symbol
+
     def _integration_owner(self, state: HarnessState) -> str:
         owners = [
             str(item["id"])
@@ -1410,10 +1426,7 @@ class HarnessNodes:
         """
         project_dir, store = self._context(state); contract = self._contract(state)
         marker = release_marker(contract)
-        setting = str(contract.get("release", {}).get("selftest_config") or "")
-        symbol, separator, requested = setting.partition("=")
-        if not symbol or (separator and requested not in {"", "n"}):
-            raise ValueError("release smoke requires a selftest-off config symbol")
+        symbol = self._release_selftest_symbol(contract)
         baseline = project_dir / "sdkconfig"
         if not baseline.is_file():
             raise ValueError("release smoke requires an existing development sdkconfig")
@@ -1849,15 +1862,7 @@ class HarnessNodes:
             raise ValueError("source/contract consistency failed before release: " + "; ".join(source_errors))
         marker = release_marker(contract)
         self._require_owned_source(project_dir, "integration", [{"expected": {"marker": marker}}])
-        setting = contract.get("release", {}).get("selftest_config")
-        if not setting: raise ValueError("release.selftest_config is required")
-        # v1.0 contracts used either a Kconfig symbol or the full historical
-        # spelling ``CONFIG_X=n``.  Normalize both forms before producing or
-        # validating the release override; new contracts should prefer just
-        # the symbol, but a safe release cannot misinterpret legacy input.
-        symbol, separator, requested = str(setting).partition("=")
-        if separator and requested not in {"n", ""}:
-            raise ValueError("release.selftest_config must request a disabled Kconfig symbol")
+        symbol = self._release_selftest_symbol(contract)
         development_config = project_dir / "sdkconfig"
         if not development_config.is_file():
             raise ValueError("release requires an existing ESP-IDF sdkconfig baseline")

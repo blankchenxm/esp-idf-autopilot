@@ -218,6 +218,12 @@ def test_project_kconfig_override_must_be_declared(tmp_path: Path):
     ) == ["CONFIG_DEMO_MISSING"]
 
 
+def test_release_selftest_config_accepts_structured_legacy_form():
+    assert HarnessNodes._release_selftest_symbol({"release": {
+        "selftest_config": {"CONFIG_DEMO_SELFTEST": "n"}
+    }}) == "CONFIG_DEMO_SELFTEST"
+
+
 def test_material_change_resume_clears_the_historical_blocker(tmp_path: Path):
     project = tmp_path / "projects" / "demo"
     project.mkdir(parents=True)
