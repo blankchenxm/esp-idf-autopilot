@@ -98,14 +98,21 @@ def test_readiness_adopted_component_with_full_coverage_needs_no_reader():
     assert result.reader_requests == []
 
 
-def test_readiness_local_idf_selection_covers_mcu_native_lifecycle():
+def test_readiness_local_idf_selection_covers_only_named_api_capabilities():
     result = assess_implementation_readiness(
         owner="board_resources",
         required_operations=["initialize", "claim_resources", "reset_recovery"],
         selection={
             "decision": "local_idf",
             "provider_receipt_id": "design-provider-local-idf",
-            "covered_operations": [],
+            "covered_operations": [
+                "initialize", "claim_resources", "reset_recovery"
+            ],
+            "selection_evidence": {
+                "operation_capabilities": [
+                    "initialize", "claim_resources", "reset_recovery"
+                ]
+            },
         },
         existing_facts=[],
     )
@@ -135,27 +142,52 @@ def test_readiness_adopted_component_reads_only_capability_gap():
     ]
 
 
-def test_readiness_custom_driver_uses_operation_gaps_not_full_l2():
+def test_readiness_custom_driver_requires_facts_for_hardware_lifecycle():
     result = assess_implementation_readiness(
         owner="rare_chip",
         required_operations=["identify", "read", "reset_recovery"],
         selection={"decision": "custom", "covered_operations": []},
         existing_facts=[
             {
-                "parameter": "identify",
+                "capability_ids": ["identify"],
                 "source_kind": "datasheet",
                 "provider_receipt_id": "receipt-identify",
             },
             {
-                "parameter": "read",
+                "capability_ids": ["read"],
                 "source_kind": "datasheet",
                 "provider_receipt_id": "receipt-read",
             },
         ],
     )
 
+    assert result.ready is False
     assert result.missing_facts == ["reset_recovery"]
-    assert len(result.reader_requests) == 1
+    assert result.operation_authorities == [
+        {
+            "operation": "identify", "kind": "hardware_fact",
+            "source_kind": "datasheet", "provider_receipt_id": "receipt-identify",
+        },
+        {
+            "operation": "read", "kind": "hardware_fact",
+            "source_kind": "datasheet", "provider_receipt_id": "receipt-read",
+        },
+    ]
+
+
+def test_custom_driver_declared_coverage_cannot_bypass_targeted_operation_facts():
+    result = assess_implementation_readiness(
+        owner="microphone",
+        required_operations=["initialize", "capture_stereo"],
+        selection={
+            "decision": "custom",
+            "covered_operations": ["initialize", "capture_stereo"],
+        },
+        existing_facts=[],
+    )
+
+    assert result.ready is False
+    assert result.missing_facts == ["initialize", "capture_stereo"]
 
 
 def test_high_risk_operation_requires_authoritative_source_even_if_fact_exists():

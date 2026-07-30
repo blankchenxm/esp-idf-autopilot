@@ -11,9 +11,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .codex_runner import background_creationflags
+from .codex_runner import background_creationflags, hidden_startupinfo
 from .runtime_paths import ProjectRuntime
-from .storage import atomic_write_json
+from .storage import atomic_write_json, digest
 
 
 TERMINAL_MODES = {
@@ -23,6 +23,7 @@ TERMINAL_MODES = {
     "FAULTED",
     "COMPLETE",
     "PAUSED",
+    "INTERRUPTED",
 }
 
 
@@ -41,10 +42,32 @@ def _read(path: Path) -> dict[str, Any]:
 
 def _write(runtime: ProjectRuntime, record: dict[str, Any]) -> None:
     path = runtime.execution_jobs / f"{record['job_id']}.json"
+    previous = _read(path)
     atomic_write_json(path, record)
     active = _read(runtime.active_execution_job)
     if not active or active.get("job_id") == record["job_id"]:
         atomic_write_json(runtime.active_execution_job, record)
+    observed = ("mode", "cursor", "phase", "next_action", "summary")
+    if any(previous.get(key) != record.get(key) for key in observed):
+        from .control_events import publish_control_event
+
+        publish_control_event(
+            runtime.repo_root,
+            runtime.project_id,
+            source="execution_job",
+            mode=str(record.get("mode") or "UNKNOWN"),
+            reason=next((
+                key for key in observed
+                if previous.get(key) != record.get(key)
+            ), "state_change"),
+            payload={
+                "job_id": record.get("job_id"),
+                "run_id": record.get("run_id"),
+                "cursor": record.get("cursor"),
+                "phase": record.get("phase"),
+                "next_action": record.get("next_action"),
+            },
+        )
 
 
 def _pid_is_alive(pid: int) -> bool:
@@ -89,18 +112,38 @@ def _launch_lock(runtime: ProjectRuntime):
             path.unlink(missing_ok=True)
 
 
-def read_execution_job(
-    repo_root: Path, project: str
+def reconcile_worker_state(
+    runtime: ProjectRuntime,
+    record: dict[str, Any],
 ) -> dict[str, Any]:
-    runtime = ProjectRuntime(repo_root, project).ensure()
-    record = _read(runtime.active_execution_job)
+    """Atomically reconcile active pointer, job record, PID and projections."""
+    original_pointer = dict(record)
+    reconciliation_reasons: list[str] = []
+    if record.get("job_id"):
+        job_record = _read(
+            runtime.execution_jobs / f"{record['job_id']}.json"
+        )
+        if job_record and job_record != record:
+            record = job_record
+            atomic_write_json(runtime.active_execution_job, record)
+            reconciliation_reasons.append("stale_active_job_projection")
+    elif not record:
+        candidates = []
+        for path in sorted(runtime.execution_jobs.glob("*.json")):
+            value = _read(path)
+            if value.get("mode") in {"STARTING", "CONTINUOUS"}:
+                candidates.append(value)
+        if len(candidates) == 1:
+            record = candidates[0]
+            atomic_write_json(runtime.active_execution_job, record)
+            reconciliation_reasons.append("missing_active_job_pointer")
     if (
         record.get("mode") == "CONTINUOUS"
         and not _pid_is_alive(int(record.get("pid") or 0))
     ):
         record = {
             **record,
-            "mode": "FAULTED",
+            "mode": "INTERRUPTED",
             "kind": "worker_interrupted",
             "summary": (
                 "execution worker exited before a terminal checkpoint; "
@@ -109,7 +152,44 @@ def read_execution_job(
             "finished_at": _now(),
         }
         _write(runtime, record)
+        reconciliation_reasons.append("dead_nonterminal_worker")
+    if reconciliation_reasons:
+        active_thread = _read(runtime.active_thread)
+        projection = _read(
+            runtime.repo_root / "projects" / runtime.project_id
+            / "execution" / "run-state.json"
+        )
+        reconciliation = {
+            "schema_version": "1.0",
+            "project": runtime.project_id,
+            "job_id": record.get("job_id"),
+            "mode": record.get("mode"),
+            "reasons": reconciliation_reasons,
+            "prior_active_pointer": original_pointer,
+            "checkpoint_database_present": runtime.checkpoints.is_file(),
+            "active_thread": active_thread,
+            "projection": projection,
+            "created_at": _now(),
+        }
+        reconciliation["reconciliation_id"] = digest({
+            key: value for key, value in reconciliation.items()
+            if key not in {"created_at", "reconciliation_id"}
+        })
+        atomic_write_json(
+            runtime.worker_reconciliations
+            / f"{reconciliation['reconciliation_id']}.json",
+            reconciliation,
+        )
     return record
+
+
+def read_execution_job(
+    repo_root: Path, project: str
+) -> dict[str, Any]:
+    runtime = ProjectRuntime(repo_root, project).ensure()
+    return reconcile_worker_state(
+        runtime, _read(runtime.active_execution_job)
+    )
 
 
 def _spawn(
@@ -142,6 +222,7 @@ def _spawn(
             background_creationflags()
             | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
         )
+        kwargs["startupinfo"] = hidden_startupinfo()
     else:
         kwargs["start_new_session"] = True
     try:

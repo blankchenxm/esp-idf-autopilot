@@ -7,7 +7,7 @@ Only `spec.md` is presented as a user document; inventory,
 grounding plan, Plan/Tasks/DAG, and verification remain structured sections of the machine
 contract.
 
-## Authority boundary (schema 1.5)
+## Authority boundary (current schema 1.7)
 
 The Harness compiles `requirements/<project>.md` and `connections/<project>.md`
 into a hash-bound `input-authority.json` for every new package. It records exact
@@ -109,12 +109,43 @@ manifests and shows every project consuming each shared object.
 
 ## Design facts, operation intent, and product decisions
 
+## Typed operation and production-flow contract (schema 1.7)
+
+Schema 1.7 is the current executable schema. `schemas/schema-capabilities.json`
+is the only version/capability admission table. Older packages remain audit
+inputs; migration creates a new unapproved revision and records every derived
+and unresolved field in `migration-report.json`.
+
+Every operation declares a stable ID, semantic owner, kind/risk, named
+capabilities, exact authority sources, source/link assertions, runtime probe,
+and consumers. Hardware register/transport/power/erase/program/timing/DMA work
+cannot inherit a host-policy default. A custom owner or one local ESP-IDF
+Receipt never blanket-covers its operations.
+
+Normal runtime composition is a deterministic design artifact, not an
+implementation prompt. `architecture.runtime_flow` declares the one
+system-orchestration entrypoint, typed ports, call/queue/event/storage/protocol
+edges, lifecycle transitions, resource/backpressure rules, ordered owner
+operations, requirement coverage, product symbols, source assertions, and dependencies. Every R/DR
+must be covered and every integration test must name the runtime-flow steps
+that cover its requirements. A selftest-only symbol or parallel simulation is
+not a valid production step. Execution validates static reachability and link
+assertions, then requires correlated runtime step/operation/edge observations
+from a selftest-off production-path Integration image before Tier C, closure,
+and release.
+
+For a custom driver, selected `covered_operations` records intended scope only.
+It is never operation-authority evidence. Hardware-facing initialization and recovery
+require receipt-bound targeted facts; only explicitly classified host-side
+logic may use a versioned local-IDF default. This prevents a `NOT_SUPPORTED`
+stub from satisfying a design promise.
+
 Schema 1.3 separates facts the Harness must acquire from choices the product
 owner must make. Design freezes L0/L1 identity, interface, electrical, safety,
 acceptance facts and each owner's `required_operations`; it does not require a
 complete register/API/DMA study or receipt-bound implementation facts before
 approval. Existing grounded facts may remain in the contract. Execution
-readiness later binds only missing operation facts to an immutable addendum and
+operation authority later binds only missing facts to an immutable addendum and
 project-source assertions before any hardware transaction.
 
 `product_decisions` contain behavior, safety, resource budget, and external
@@ -144,8 +175,8 @@ rewrite.
 Credential-redaction/provisioning statements are Harness policy rather than product decisions.
 Likewise, statements that only identify missing driver/API/register/DMA/recovery facts, including
 format/buffer bounds that are deliberately selected from those operation facts, are routed to
-Execution readiness after L1 is valid; they cannot trigger a full Design-provider rewrite. The review
-renderer removes the stale provisional sentence and records the typed policy/readiness resolution.
+Execution operation authority after L1 is valid; they cannot trigger a full Design-provider rewrite.
+The review renderer removes the stale provisional sentence and records the typed authority resolution.
 Only an explicit `[USER_DECISION]` remains an approval-time human gate.
 
 ## Verification batching and Tier C admission
@@ -163,9 +194,11 @@ requires selftest or an injected event must never be awaited from a normal boot.
 Tier C unless an `automated_fixture` setup and fixture stimulus are declared.
 
 Tier C is empty unless a required physical property cannot be verified after maximizing A/B.
-Schema 1.2 requires the reason, completed automated checks, observable artifact contract, physical
-property, and retry owners. Integration precedes Tier C so the user observes the final system
-artifact, not an intermediate component state. Artifact sources must already be actionable:
+Schema 1.7 requires the reason, completed automated checks, observable artifact contract, physical
+property, retry owners, producer phase/test/operation IDs, delivery method, correlation key,
+producer Receipt kinds, and deterministic artifact validation. Integration precedes Tier C so the
+user observes the final system artifact from the final affected firmware, not an intermediate
+component state. Artifact sources must already be actionable:
 a project-relative generated file, an absolute HTTP(S) download, or an explicit physical
 observation. Descriptive placeholders are Design errors.
 

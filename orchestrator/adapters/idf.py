@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..models import Failure, FailureCategory, Receipt
-from ..codex_runner import background_creationflags
-from ..policies import classify_failure
+from ..codex_runner import background_creationflags, hidden_powershell_command, hidden_startupinfo
 from ..storage import ProjectStore, file_ref
+from ..transactions import idempotency_authority
 
 
 class IdfAdapter:
@@ -40,7 +40,9 @@ class IdfAdapter:
         receipt_id = self.store.new_id(operation)
         log_path = self.store.logs / self.run_id / f"{receipt_id}.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        command = ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(self.wrapper), *args]
+        command = hidden_powershell_command(
+            "-ExecutionPolicy", "Bypass", "-File", str(self.wrapper), *args
+        )
         child_env = os.environ.copy()
         child_env.pop("PYTHONPATH", None)
         # idf.py starts CMake/Ninja descendants.  A timeout must clean up the
@@ -56,6 +58,7 @@ class IdfAdapter:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             creationflags=background_creationflags(),
+            startupinfo=hidden_startupinfo(),
         )
         timed_out = False
         try:
@@ -70,7 +73,15 @@ class IdfAdapter:
         log_path.write_text(output, encoding="utf-8")
         success = returncode == 0
         summary = f"{operation} timed out after {timeout} seconds" if timed_out else f"{operation} exited {returncode}"
-        failure_category = classify_failure(output)
+        # The adapter operation is typed before execution. Routing never
+        # depends on presentation text from CMake/Ninja/esptool.
+        failure_category = (
+            FailureCategory.FLASH
+            if "flash" in operation
+            else FailureCategory.ENVIRONMENT
+            if operation == "idf_version"
+            else FailureCategory.BUILD
+        )
         failure = None if success else Failure(
             category=failure_category,
             summary=summary,
@@ -99,7 +110,7 @@ class IdfAdapter:
                         "firmware_binary": binary_ref.path,
                     }
                 )
-        receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation=operation, started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success, command=command, inputs={"args": args, "idempotency_key": idempotency_key}, outputs=outputs, artifacts=artifacts, failure=failure)
+        receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation=operation, started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success, command=command, inputs={"args": args, "idempotency_key": idempotency_key, "idempotency_authority": idempotency_authority(idempotency_key)}, outputs=outputs, artifacts=artifacts, failure=failure)
         self.store.write_receipt(receipt, category)
         return receipt
 
@@ -111,10 +122,11 @@ class IdfAdapter:
         project_dir: Path,
         target: str,
         *,
+        operation: str = "set_target",
         idempotency_key: str | None = None,
     ) -> Receipt:
         return self.run(
-            "set_target",
+            operation,
             ["-C", str(project_dir), "set-target", target],
             "build",
             idempotency_key=idempotency_key,
@@ -139,8 +151,23 @@ class IdfAdapter:
             build_output=build_dir or (project_dir / "build"),
         )
 
-    def fullclean(self, project_dir: Path) -> Receipt:
-        return self.run("fullclean", ["-C", str(project_dir), "fullclean"], "build")
+    def fullclean(
+        self,
+        project_dir: Path,
+        build_dir: Path | None = None,
+        operation: str = "fullclean",
+        *,
+        idempotency_key: str | None = None,
+    ) -> Receipt:
+        args = ["-C", str(project_dir)]
+        if build_dir is not None:
+            args.extend(["-B", str(build_dir)])
+        return self.run(
+            operation,
+            [*args, "fullclean"],
+            "build",
+            idempotency_key=idempotency_key,
+        )
 
     def flash(
         self,
@@ -197,7 +224,7 @@ class IdfAdapter:
         """Backward-compatible release-specific isolated configuration."""
         return self.configure_isolated(
             project_dir, build_dir, sdkconfig_path, defaults,
-            "release_reconfigure", idempotency_key=idempotency_key,
+            "release_configure", idempotency_key=idempotency_key,
         )
 
     @staticmethod

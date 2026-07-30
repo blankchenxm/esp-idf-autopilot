@@ -5,9 +5,9 @@ description: Build, flash, resume, revise, and validate ESP-IDF firmware from ma
 
 # ESP-IDF Firmware Harness
 
-The repository harness is workflow authority. Do not manually imitate its state machine.
-LangGraph checkpoints hold the control cursor. Approved designs, Receipts, Evidence, and events
-hold facts. `run-state.json` is generated compatibility output and must never be hand-edited.
+The repository harness is workflow authority. `schemas/harness-invariants.json` (`HR-*`) and its
+callable graph-conformance gate enforce hard rules; prose is not enforcement. LangGraph owns the
+cursor, approved designs/Receipts/Evidence own facts, and `run-state.json` is never hand-edited.
 
 ## Inputs and routing
 
@@ -45,13 +45,14 @@ python -m orchestrator.cli design --project <project>
 
 # Sole normal design interaction, after reviewing projects/<project>/design-package/.../spec.md
 python -m orchestrator.cli resume --project <project> --approve
-
 python -m orchestrator.cli start --project <project>
 python -m orchestrator.cli resume --project <project>
 python -m orchestrator.cli status --project <project>
+python -m orchestrator.cli await-event --project <project> --after-seq <event-seq>
+python -m orchestrator.cli report --project <project> --run-id <run-id>
 python -m orchestrator.cli validate --project <project>
 
-# Maintenance/audit operations; these use Harness APIs, never hand-edit facts
+# Maintenance/audit operations; use Harness APIs, never hand-edit facts
 python -m orchestrator.cli reconcile-state --project <project>
 python -m orchestrator.cli migrate-datasheets --project <project>
 python -m orchestrator.cli archive-runs --project <project>
@@ -68,8 +69,9 @@ python -m orchestrator.cli prepare-revision --project <project> --from-revision 
 `design` is programmatically detached from the invoking shell. It returns `DESIGN_RUNNING` with a
 project-scoped `job_id`; the worker continues through provider repair, grounding, validation, and
 atomic promotion even if the caller or conversation exits. Repeating `design` observes the same
-live job rather than launching a duplicate. Poll `status` until `WAITING_DESIGN_INPUT`,
-`WAITING_SPEC`, or `BLOCKED`.
+live job rather than launching a duplicate. Observe one `status`, then use `await-event` from its
+latest `event_seq` until a meaningful transition. Never create recurring model-driven
+`status`/`wait` loops; progress heartbeats are client-visible non-model events.
 Do not infer progress from stdout silence or manage Design worker PIDs manually.
 
 Use `--revision N` to select a non-latest revision. `WAITING_DESIGN_INPUT` is an unnumbered staged
@@ -119,8 +121,8 @@ Ground implementation choices in this order:
   acceptance facts. Design approval stops here.
 - After receipt-bound Registry details exist, let the Harness replace any draft component choice
   with the final compatible adoption/rejection and frozen operation coverage.
-- Before implementing an owner, let Execution readiness compare its required operations with the
-  selected component and existing facts. If gaps remain, invoke the replaceable reader only for
+- Before implementing an owner, let `operation_authority` compare typed capabilities with the
+  selected component and receipt-bound facts. If gaps remain, invoke the reader only for
   those named gaps and persist the design/source-bound implementation addendum. A custom driver
   does not imply a complete L2 read. Destructive/safety constants require authoritative sources;
   L3 remains failure-directed.
@@ -142,7 +144,7 @@ Grounding-only provisional unknowns must use `[GROUNDING_PENDING]`; the Harness 
 only after receipt-bound grounding validates, records the reconciliation, and leaves genuine
 `[USER_DECISION]` items active. Credential redaction/provisioning is Harness policy, not a
 design decision. Missing driver/API/register/DMA/recovery detail after valid L1 is likewise an
-Execution-readiness obligation: record the deferral and acquire only named operation facts in the
+operation-authority obligation: record the deferral and acquire only named operation facts in the
 immutable addendum. This includes format/buffer bounds deliberately selected from those facts.
 Do not invoke a full Design repair or a human gate for either category.
 Datasheets live once in `hardware/datasheets/objects/sha256/`; project manifests reference hashes.
@@ -154,19 +156,19 @@ in place, preserve shared objects, and require an integrity-verified external sn
 
 ```text
 initialize -> environment/hardware preflight -> design validation -> approval
--> digest and hardware-session binding -> dependency-ordered verification batches
--> integration -> artifact materialization -> one optional Tier C batch -> closure
--> fresh selftest-off release -> COMPLETE
+-> invariant/schema/typed-operation authority -> hardware binding -> normalized images
+-> materialize -> completeness/source -> configure -> build -> flash -> observe -> evaluate -> Evidence
+-> component/production composition -> selftest-off production-path Integration
+-> producer-bound artifact -> optional Tier C -> closure -> fullclean production Release -> COMPLETE
 ```
 
-Tier C artifact sources must be directly usable: project-relative `local_file`, absolute HTTP(S)
-`download_url`, or explicit `physical_observation`. Descriptions of future artifacts are invalid.
+Tier C artifacts require a final-image producer/delivery/correlation Receipt chain; their source
+must be project-relative `local_file`, absolute HTTP(S), or explicit `physical_observation`.
 
 For every subsystem:
 
-1. Pass the deterministic readiness checkpoint. Load the derived owner-specific contract view and
-   immutable implementation addendum: final component/version, operation coverage, only required
-   missing facts, receipt hashes, and current owner failure logs.
+1. Pass typed operation authority and implementation completeness. Load only the owner contract
+   slice, named capability authorities, bounded diagnostic, source hashes, and writable allowlist.
 2. Adopt the selected Registry dependency behind `components/<owner>/` when one is frozen.
    Implement custom code only for uncovered operations. Keep register/bus/transport details out
    of `main/`; `main/` owns product orchestration and state machines.
@@ -180,9 +182,9 @@ For every subsystem:
 6. Classify failures, apply the smallest owner-directed repair under retry policy, and reverify the
    owner plus affected consumers. Routine source/build/port/USB/serial failures require no user.
 
-Node exceptions route through the Graph `recover` gate. Persist the normalized failure and material
-fingerprint, clean/re-probe or repair the owning source, and retry the failed checkpoint boundary.
-The same failure without material change must become an evidenced `STALL`, never an infinite loop.
+Node exceptions route through typed `recover`. Lineage is invariant/node/owner/operation/test; only
+relevant material admits one model repair. Untyped exceptions are internal faults, and unchanged
+lineage/material becomes evidenced `STALL`, never text-routed retry or an infinite loop.
 
 Refresh changed COM ports by stable hardware identity. The implementation agent works in a
 disposable mirror and imports only project CMake/Kconfig/sdkconfig, `main/`, and `components/`.
@@ -213,10 +215,9 @@ limitation. Stale, mock, PARTIAL, FAIL, BLOCKED, missing, or contradictory evide
 An immutable correction can supersede mistaken Evidence without editing history and demotes an
 affected COMPLETE projection until fresh verification closes the row.
 
-Release proves the contract-specific selftest config effectively disabled, performs fullclean and
-a new build, stops serial, flashes, captures fresh normal runtime, and binds successful build,
-flash and serial receipts to the application binary hash. Normal operation must not depend on
-selftest, expose secrets, retain test junk, or take destructive test paths.
+Release uses distinct prepare/fullclean/configure/build/flash/observe/validate checkpoints, runs a
+declared normal-entrypoint production scenario, and binds all Receipts to one binary/hardware.
+READY-only, selftest, secrets, test junk, destructive paths, unsupported operations, and fatal loops fail.
 
 ## Output contract
 

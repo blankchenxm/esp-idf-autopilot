@@ -4,15 +4,19 @@ import hashlib
 import json
 import copy
 import string
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import jsonschema
 
-from .models import RunStateProjection, RunMode
+from .models import ReleaseEvidence, RunStateProjection, RunMode
 from .storage import canonical_bytes
 from .evaluation import EXECUTABLE_EXPECTATION_KEYS
+from .schema_capabilities import schema_has
+from .operation_authority import compile_operation_authority
+from .tier_c_producer import validate_tier_c_contract
 
 
 REQUIRED_DESIGN_FILES = (
@@ -115,7 +119,136 @@ def topological_subsystems(subsystems: list[dict[str, Any]]) -> list[str]:
     return order
 
 
-def validate_contract(contract: dict[str, Any]) -> list[str]:
+def _validate_runtime_flow(contract: dict[str, Any]) -> list[str]:
+    """Validate the design-time, production-only component composition.
+
+    Component verification establishes local behaviour.  This flow is the
+    separate authority that proves every requirement is intentionally wired
+    into the normal runtime and that integration tests exercise that same
+    path, rather than a parallel selftest-only implementation.
+    """
+    errors: list[str] = []
+    flow = contract.get("architecture", {}).get("runtime_flow")
+    if not isinstance(flow, dict):
+        return ["architecture.runtime_flow is required for the current runtime-flow schema"]
+    definitions = {
+        str(item.get("id")): item
+        for item in contract.get("subsystems", []) if isinstance(item, dict)
+    }
+    requirements = {str(item.get("id")) for item in contract.get("requirements", [])}
+    typed_operations = schema_has(
+        str(contract.get("schema_version") or ""), "typed_operations"
+    )
+    operations = {
+        str(item.get("operation_id")): item
+        for item in contract.get("operations", [])
+        if isinstance(item, dict)
+    }
+    entrypoint = flow.get("entrypoint")
+    if not isinstance(entrypoint, dict):
+        return ["architecture.runtime_flow.entrypoint must be an object"]
+    entry_owner = str(entrypoint.get("owner") or "")
+    if entry_owner not in definitions:
+        errors.append("architecture.runtime_flow.entrypoint has an unknown owner")
+    elif definitions[entry_owner].get("responsibility_layer") != "system_orchestration":
+        errors.append("architecture.runtime_flow.entrypoint owner must be system_orchestration")
+    if not str(entrypoint.get("symbol") or ""):
+        errors.append("architecture.runtime_flow.entrypoint lacks symbol")
+    steps = flow.get("steps")
+    if not isinstance(steps, list) or not steps:
+        return errors + ["architecture.runtime_flow requires at least one step"]
+    step_ids: set[str] = set(); covered_requirements: set[str] = set()
+    dependencies: dict[str, set[str]] = {}
+    for step in steps:
+        if not isinstance(step, dict):
+            errors.append("architecture.runtime_flow contains a non-object step")
+            continue
+        step_id = str(step.get("id") or "")
+        owner = str(step.get("owner") or "")
+        operation = str(step.get("operation") or "")
+        if not step_id or step_id in step_ids:
+            errors.append(f"architecture.runtime_flow has invalid or duplicate step id: {step_id!r}")
+            continue
+        step_ids.add(step_id); dependencies[step_id] = set(step.get("after") or [])
+        if owner not in definitions:
+            errors.append(f"runtime-flow step {step_id!r} has unknown owner {owner!r}")
+        elif (
+            not typed_operations
+            and operation not in set(
+                definitions[owner].get("required_operations") or []
+            )
+        ):
+            errors.append(f"runtime-flow step {step_id!r} operation {operation!r} is not declared by {owner!r}")
+        if typed_operations:
+            selected_operations = [
+                str(item) for item in step.get("operation_ids", [])
+            ]
+            if not selected_operations:
+                errors.append(
+                    f"runtime-flow step {step_id!r} lacks operation_ids"
+                )
+            for operation_id in selected_operations:
+                definition = operations.get(operation_id)
+                if definition is None:
+                    errors.append(
+                        f"runtime-flow step {step_id!r} names unknown "
+                        f"operation {operation_id!r}"
+                    )
+                elif str(definition.get("owner")) != owner:
+                    errors.append(
+                        f"runtime-flow step {step_id!r} operation "
+                        f"{operation_id!r} belongs to another owner"
+                    )
+        if not str(step.get("symbol") or ""):
+            errors.append(f"runtime-flow step {step_id!r} lacks a production symbol")
+        requirement_ids = set(str(item) for item in step.get("requirement_ids") or [])
+        unknown = requirement_ids - requirements
+        if unknown:
+            errors.append(f"runtime-flow step {step_id!r} names unknown requirements {sorted(unknown)}")
+        covered_requirements.update(requirement_ids)
+        assertions = step.get("source_assertions")
+        if not isinstance(assertions, list) or not assertions:
+            errors.append(f"runtime-flow step {step_id!r} lacks source_assertions")
+    unknown_dependencies = {
+        dependency for values in dependencies.values() for dependency in values
+        if dependency not in step_ids
+    }
+    if unknown_dependencies:
+        errors.append(f"runtime-flow references unknown preceding steps {sorted(unknown_dependencies)}")
+    else:
+        try:
+            topological_subsystems([
+                {"id": step_id, "dependencies": sorted(values)}
+                for step_id, values in dependencies.items()
+            ])
+        except ValueError as exc:
+            errors.append(f"runtime-flow {exc}")
+    missing = requirements - covered_requirements
+    if missing:
+        errors.append(f"runtime-flow does not cover requirements {sorted(missing)}")
+    for test in contract.get("integration", {}).get("tests", []):
+        if not isinstance(test, dict):
+            continue
+        selected = set(str(item) for item in test.get("runtime_step_ids") or [])
+        if not selected:
+            errors.append(f"integration test {test.get('id')!r} lacks runtime_step_ids")
+            continue
+        unknown = selected - step_ids
+        if unknown:
+            errors.append(f"integration test {test.get('id')!r} names unknown runtime steps {sorted(unknown)}")
+        test_requirements = set(str(item) for item in test.get("requirement_ids") or [])
+        exercised = set().union(*(
+            set(str(item) for item in step.get("requirement_ids") or [])
+            for step in steps if str(step.get("id")) in selected
+        ))
+        if not test_requirements.issubset(exercised):
+            errors.append(f"integration test {test.get('id')!r} runtime steps do not cover its requirements")
+    return errors
+
+
+def validate_contract(
+    contract: dict[str, Any], input_authority: dict[str, Any] | None = None,
+) -> list[str]:
     # The Design graph calls this validator before choosing either repair or
     # promotion.  Keep the JSON Schema check here as well as in
     # ``validate_design_package`` so a schema-only defect is routed back to
@@ -137,14 +270,42 @@ def validate_contract(contract: dict[str, Any]) -> list[str]:
     integration_ids = {item_id for item_id, role in subsystem_roles.items() if role == "integration"}
     if len(integration_ids) > 1:
         errors.append("contract may declare at most one integration subsystem")
-    strict_contract = contract.get("schema_version") in {"1.1", "1.2", "1.3", "1.4", "1.5"}
-    # Schema 1.5 extends 1.3; it must retain the 1.2+ execution ordering
-    # (integration before Tier C), not fall back to the legacy 1.0 order.
-    strict_v12 = contract.get("schema_version") in {"1.2", "1.3", "1.4", "1.5"}
-    strict_v13 = contract.get("schema_version") in {"1.3", "1.4", "1.5"}
-    strict_v15 = contract.get("schema_version") == "1.5"
+    version = str(contract.get("schema_version") or "")
+    strict_contract = schema_has(version, "evidence_contract")
+    strict_v12 = schema_has(version, "verification_batch")
+    strict_v13 = schema_has(version, "implementation_facts")
+    strict_v15 = schema_has(version, "typed_test_setup")
+    strict_v16 = schema_has(version, "runtime_flow")
     if strict_v13:
         errors.extend(_unresolved_approval_paths(contract))
+    if strict_v16:
+        errors.extend(_validate_runtime_flow(contract))
+    if schema_has(version, "typed_operations"):
+        errors.extend(compile_operation_authority(contract).errors)
+        errors.extend(validate_tier_c_contract(contract))
+        operation_ids = {
+            str(item.get("operation_id"))
+            for item in contract.get("operations", [])
+            if isinstance(item, dict)
+        }
+        flow = contract.get("architecture", {}).get("runtime_flow", {})
+        for edge in flow.get("edges", []):
+            if edge.get("kind") == "queue" and not edge.get("queue_depth"):
+                errors.append("runtime queue edge lacks queue_depth")
+            if edge.get("kind") in {"queue", "protocol"} and not edge.get("backpressure"):
+                errors.append(f"runtime {edge.get('kind')} edge lacks backpressure")
+        scenarios = {
+            str(item.get("scenario_id")): item
+            for item in contract.get("integration", {}).get("production_scenarios", [])
+            if isinstance(item, dict)
+        }
+        for scenario_id, scenario in scenarios.items():
+            unknown = sorted(set(map(str, scenario.get("operation_ids", []))) - operation_ids)
+            if unknown:
+                errors.append(f"production scenario {scenario_id!r} names unknown operations {unknown}")
+        for scenario_id in contract.get("release", {}).get("core_production_scenario_ids", []):
+            if str(scenario_id) not in scenarios:
+                errors.append(f"release names unknown core production scenario {scenario_id!r}")
     if strict_contract:
         for item in contract["subsystems"]:
             if "execution_role" not in item:
@@ -563,8 +724,20 @@ def validate_design_package(design_dir: Path, require_approval: bool = True) -> 
             except ValueError:
                 errors.append(f"manifest {section} path escapes authority root: {path}"); continue
             if not path.is_file(): errors.append(f"manifest {section} file missing: {path}"); continue
-            current = hashlib.sha256(path.read_bytes()).hexdigest()
-            if current != reference.get("sha256") or path.stat().st_size != reference.get("size"):
+            raw = path.read_bytes()
+            if section == "inputs" and reference.get("path") == f"requirements/{project_id}.md":
+                from .input_authority import semantic_input_bytes
+                current_bytes = semantic_input_bytes("requirements", raw)
+            else:
+                current_bytes = raw
+            current = hashlib.sha256(current_bytes).hexdigest()
+            if current != reference.get("sha256") or len(current_bytes) != reference.get("size"):
+                # Legacy revisions bound the raw requirements file.  They can
+                # continue only after an explicit, secret-free rotation receipt
+                # proves the current public authority is unchanged.
+                from .credential_rotation import rotation_allows_input
+                if section == "inputs" and rotation_allows_input(design_dir, reference, raw):
+                    continue
                 errors.append(f"manifest {section} hash/size mismatch: {path}")
     expected = design_digest(contract, manifest)
     provider_ids: set[str] = set()
@@ -608,8 +781,67 @@ def validate_design_package(design_dir: Path, require_approval: bool = True) -> 
     return contract, errors
 
 
+def validate_release_transaction(release: ReleaseEvidence) -> list[str]:
+    """Validate the immutable authority surface of a release transaction."""
+    errors: list[str] = []
+    if not release.closure_pass:
+        errors.append("release is not bound to successful closure")
+    if not release.selftest_disabled:
+        errors.append("release does not prove selftest disabled")
+    for field in (
+        "fullclean_receipt_id", "configure_receipt_id", "build_receipt_id",
+        "flash_receipt_id", "serial_receipt_id", "firmware_sha256",
+        "firmware_binary",
+    ):
+        if not getattr(release, field):
+            errors.append(f"release authority field {field!r} is missing")
+    if not release.production_scenario_ids:
+        errors.append("release selects no core production scenario")
+    if (
+        len(release.production_scenario_ids)
+        != len(release.production_scenario_receipt_ids)
+    ):
+        errors.append("release production scenario authority is incomplete")
+    return errors
+
+
+def validate_release_runtime_text(
+    text: str, forbidden_patterns: list[str] | tuple[str, ...],
+) -> list[str]:
+    """Reject release-only forbidden states without returning secret values."""
+    errors: list[str] = []
+    secret_like = re.compile(
+        r"(?i)(?:password|passwd|token|secret|authorization)"
+        r"\s*[:=]\s*\S+"
+    )
+    if secret_like.search(text):
+        errors.append("release runtime emitted credential-like plaintext")
+    patterns = [
+        *forbidden_patterns,
+        r"\bSELFTEST\b",
+        r"ESP_ERR_NOT_SUPPORTED",
+        r"Guru Meditation",
+        r"rst:\w+.*\nrst:\w+",
+    ]
+    matched = 0
+    for pattern in patterns:
+        try:
+            matched += int(bool(re.search(pattern, text, re.I | re.M)))
+        except re.error:
+            errors.append("release contract contains an invalid forbidden pattern")
+    if matched:
+        errors.append(
+            f"release runtime matched {matched} forbidden state pattern(s)"
+        )
+    return errors
+
+
 def validate_terminal(projection: RunStateProjection, project_dir: Path) -> list[str]:
     errors: list[str] = []
+    run_path = project_dir / "execution" / "run.json"
+    run = _load(run_path) if run_path.is_file() else {}
+    if not run:
+        errors.append("release terminal run authority is missing")
     if projection.project_id is not None and projection.project_id != project_dir.resolve().name:
         errors.append("run-state project_id does not match project directory")
     if projection.mode != RunMode.COMPLETE:
@@ -626,7 +858,21 @@ def validate_terminal(projection: RunStateProjection, project_dir: Path) -> list
         errors.append("one or more release raw logs are missing")
     else:
         release = projection.release_evidence
-        receipt_ids = {release.build_receipt_id, release.flash_receipt_id, release.serial_receipt_id}
+        errors.extend(validate_release_transaction(release))
+        receipt_ids = {
+            release.build_receipt_id,
+            release.flash_receipt_id,
+            release.serial_receipt_id,
+            *release.production_scenario_receipt_ids,
+        }
+        if release.fullclean_receipt_id:
+            receipt_ids.add(release.fullclean_receipt_id)
+        else:
+            errors.append("release fullclean Receipt is missing")
+        if release.configure_receipt_id:
+            receipt_ids.add(release.configure_receipt_id)
+        else:
+            errors.append("release configure Receipt is missing")
         receipts = {}
         for path in (project_dir / "execution" / "receipts").rglob("*.json"):
             value = _load(path)
@@ -636,6 +882,70 @@ def validate_terminal(projection: RunStateProjection, project_dir: Path) -> list
             if value.get("receipt_id") in receipt_ids: receipts[value["receipt_id"]] = value
         if set(receipts) != receipt_ids or any(not item.get("success") for item in receipts.values()):
             errors.append("release receipt IDs are missing or unsuccessful")
+        expected_operations = {
+            release.fullclean_receipt_id: "release_fullclean",
+            release.configure_receipt_id: "release_configure",
+            release.build_receipt_id: "release_build",
+            release.flash_receipt_id: "release_flash",
+            release.serial_receipt_id: "release_observe",
+        }
+        expected_operations.update({
+            receipt_id: "release_production_scenario"
+            for receipt_id in release.production_scenario_receipt_ids
+        })
+        for receipt_id, operation in expected_operations.items():
+            if receipt_id and receipts.get(receipt_id, {}).get("operation") != operation:
+                errors.append(
+                    f"release Receipt {receipt_id!r} does not prove {operation}"
+                )
+        design_digest_value = str(run.get("design_digest") or "")
+        hardware_identity = run.get("hardware_identity") or {}
+        for receipt_id, receipt in receipts.items():
+            if receipt.get("run_id") != projection.run_id:
+                errors.append(
+                    f"release Receipt {receipt_id!r} has a different run"
+                )
+            authority = (receipt.get("inputs") or {}).get(
+                "idempotency_authority"
+            ) or {}
+            if authority.get("design_digest") != design_digest_value:
+                errors.append(
+                    f"release Receipt {receipt_id!r} has a different design"
+                )
+            if authority.get("hardware_identity") != hardware_identity:
+                errors.append(
+                    f"release Receipt {receipt_id!r} has different hardware"
+                )
+        build_output = (
+            receipts.get(release.build_receipt_id, {}).get("outputs") or {}
+        )
+        if build_output.get("firmware_sha256") != release.firmware_sha256:
+            errors.append("release build Receipt has a different firmware hash")
+        for receipt_id in (
+            release.flash_receipt_id,
+            release.serial_receipt_id,
+        ):
+            scope = (
+                receipts.get(receipt_id, {}).get("inputs") or {}
+            ).get("idempotency_authority", {}).get("scope", {})
+            if scope.get("firmware_sha256") != release.firmware_sha256:
+                errors.append(
+                    f"release Receipt {receipt_id!r} has a different firmware hash"
+                )
+        for receipt_id in release.production_scenario_receipt_ids:
+            output = receipts.get(receipt_id, {}).get("outputs") or {}
+            if (
+                output.get("firmware_sha256") != release.firmware_sha256
+                or output.get("design_digest") != design_digest_value
+            ):
+                errors.append(
+                    f"release scenario Receipt {receipt_id!r} has different authority"
+                )
+        if not release.production_scenario_ids or (
+            len(release.production_scenario_ids)
+            != len(release.production_scenario_receipt_ids)
+        ):
+            errors.append("release core production scenario Receipts are incomplete")
         expected_paths = {release.build_log, release.flash_log, release.serial_log}
         artifact_paths = {artifact.get("path") for item in receipts.values() for artifact in item.get("artifacts", [])}
         if not expected_paths.issubset(artifact_paths): errors.append("release log paths are not bound to release receipts")
@@ -646,9 +956,7 @@ def validate_terminal(projection: RunStateProjection, project_dir: Path) -> list
             errors.append("release application binary is missing")
         elif hashlib.sha256(binary.read_bytes()).hexdigest() != release.firmware_sha256:
             errors.append("release firmware hash does not match its bound application binary")
-    run_path = project_dir / "execution" / "run.json"
-    if run_path.is_file():
-        run = _load(run_path)
+    if run:
         design_dir = project_dir / "design-package" / f"rev-{int(run['design_revision']):04d}"
         contract_path = design_dir / "execution-contract.json"
         if contract_path.is_file():

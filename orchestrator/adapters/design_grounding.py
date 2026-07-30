@@ -91,7 +91,14 @@ class DesignGroundingAdapter:
 
     def _cached(self, operation: str, inputs: dict[str, Any]) -> Receipt | None:
         key = digest({"operation": operation, "inputs": inputs})
-        for path in sorted(self.store.receipts.rglob("*.json"), reverse=True):
+        # Receipts are immutable and category-specific.  A readiness reader
+        # must materialize its own receipt even when Design already performed
+        # an identical acquisition; later stage-receipt references are bound
+        # to this adapter's category.
+        for path in sorted(
+            (self.store.receipts / self.receipt_category).glob("*.json"),
+            reverse=True,
+        ):
             try:
                 value = json.loads(path.read_text(encoding="utf-8"))
                 if value.get("success") is not True or value.get("operation") != operation:
@@ -211,6 +218,40 @@ class DesignGroundingAdapter:
         ):
             extracted = str(inspected.get("extracted_text") or "")
             text_hash = str(inspected.get("extracted_text_sha256") or "")
+
+            def deep_read_call() -> dict[str, Any]:
+                facts = (
+                    self.deep_reader.read(
+                        self.store.project_dir.name,
+                        subsystem_id,
+                        str(record.get("part_number") or inspected.get("part_number") or ""),
+                        extracted,
+                        text_hash,
+                        requested_facts,
+                    )
+                    if requested_facts
+                    else self.deep_reader.read(
+                        self.store.project_dir.name,
+                        subsystem_id,
+                        str(record.get("part_number") or inspected.get("part_number") or ""),
+                        extracted,
+                        text_hash,
+                    )
+                )
+                return {
+                    "facts": facts,
+                    "model_usage": getattr(
+                        self.deep_reader, "last_usage",
+                        {"source": "unavailable"},
+                    ),
+                    "model_context_digest": getattr(
+                        self.deep_reader, "last_context_digest", None
+                    ),
+                    "model_context_bytes": getattr(
+                        self.deep_reader, "last_context_bytes", None
+                    ),
+                }
+
             deep_read = self._receipt(
                 "datasheet_deep_read",
                 {
@@ -224,28 +265,12 @@ class DesignGroundingAdapter:
                     # reusable across generations.
                     "repair_generation": self.run_id,
                 },
-                lambda: {
-                    "facts": (
-                        self.deep_reader.read(
-                            self.store.project_dir.name,
-                            subsystem_id,
-                            str(record.get("part_number") or inspected.get("part_number") or ""),
-                            extracted,
-                            text_hash,
-                            requested_facts,
-                        )
-                        if requested_facts
-                        else self.deep_reader.read(
-                            self.store.project_dir.name,
-                            subsystem_id,
-                            str(record.get("part_number") or inspected.get("part_number") or ""),
-                            extracted,
-                            text_hash,
-                        )
-                    )
-                },
+                deep_read_call,
                 FailureCategory.DATASHEET,
-                cacheable=True,
+                # A targeted readiness repair needs a fresh probabilistic
+                # response. Reusing a same-run receipt that already omitted
+                # the requested operations only repeats the identical gap.
+                cacheable=not bool(requested_facts),
             )
             stage_receipts.append(deep_read)
             if not deep_read.success:
@@ -269,7 +294,11 @@ class DesignGroundingAdapter:
                         quote = str(fact.get("quote") or "")
                         try:
                             anchor = normalized_quote_anchor(extracted, quote)
-                            tokens = [str(token) for token in fact.get("source_tokens", []) if str(token)]
+                            tokens = [
+                                str(token) for token in fact.get("source_tokens", [])
+                                if str(token) and str(token) != "datasheet-extracted.txt"
+                                and not str(token).lower().startswith("sha256:")
+                            ]
                             if not tokens:
                                 raise ValueError("deep-reader fact lacks source tokens")
                             accepted.append({

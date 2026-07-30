@@ -8,6 +8,11 @@ def test_failure_signal_parity():
     for value, expected in samples.items(): assert classify_failure(value) == expected
 
 
+def test_undeclared_sdk_symbol_is_an_api_failure_before_synchronization_terms():
+    output = "error: 'I2C_CLK_FREQ_DEFAULT' undeclared; xSemaphoreTake(lock, 0)"
+    assert classify_failure(output) == FailureCategory.API
+
+
 def test_progress_fingerprint_changes_on_cursor():
     assert progress_fingerprint({"run_id": "r", "cursor": "a"}) != progress_fingerprint({"run_id": "r", "cursor": "b"})
 
@@ -26,6 +31,21 @@ def test_failure_fingerprint_ignores_volatile_numbers_but_changes_on_source(tmp_
     assert a == b
     source.write_text("int x = 2;", encoding="utf-8")
     assert first != material_fingerprint(project, {"subsystem_index": 0})
+
+
+def test_failure_fingerprint_ignores_disposable_agent_workspace_names():
+    material = "same"
+    first = failure_fingerprint(
+        "subsystem", FailureCategory.TOOL,
+        r"WinError 206 in runtime\\projects\\p\\agent-work\\crumb-button_input-a1b2c3d4\\project",
+        material,
+    )
+    second = failure_fingerprint(
+        "subsystem", FailureCategory.TOOL,
+        r"WinError 206 in runtime\\projects\\p\\agent-work\\crumb-button_input-z9y8x7w6\\project",
+        material,
+    )
+    assert first == second
 
 
 def test_recovery_budgets_are_bounded():

@@ -11,6 +11,7 @@ import httpx
 
 from ..models import Failure, FailureCategory, Receipt
 from ..storage import ProjectStore, file_ref
+from ..transactions import idempotency_authority
 
 
 class TierCArtifactAdapter:
@@ -19,7 +20,15 @@ class TierCArtifactAdapter:
     def __init__(self, project_dir: Path, store: ProjectStore, run_id: str, fetch=None):
         self.project_dir, self.store, self.run_id, self._fetch = project_dir.resolve(), store, run_id, fetch
 
-    def materialize(self, item: dict) -> tuple[Receipt, dict]:
+    def materialize(
+        self, item: dict, *, idempotency_key: str | None = None,
+    ) -> tuple[Receipt, dict]:
+        if idempotency_key:
+            cached = self.store.find_successful_receipt(
+                "tier_c_artifact_materialize", idempotency_key
+            )
+            if cached is not None:
+                return cached, dict(cached.outputs)
         started = datetime.now(timezone.utc).isoformat(); receipt_id = self.store.new_id("tier-c-artifact")
         contract = item.get("artifact_contract", {})
         access = contract.get("access_method")
@@ -69,6 +78,9 @@ class TierCArtifactAdapter:
                             "frames": frames,
                             "duration_s": frames / rate if rate else 0,
                         }
+                self._validate_metadata(
+                    metadata, item.get("artifact_validation") or {}
+                )
             success = True
         except Exception as exc:
             success = False
@@ -77,8 +89,53 @@ class TierCArtifactAdapter:
         receipt = Receipt(
             receipt_id=receipt_id, run_id=self.run_id, operation="tier_c_artifact_materialize",
             started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success,
-            inputs={"item_id": item["id"], "artifact_contract": contract}, outputs=metadata,
+            inputs={
+                "item_id": item["id"],
+                "artifact_contract": contract,
+                "idempotency_key": idempotency_key,
+                "idempotency_authority": idempotency_authority(
+                    idempotency_key
+                ),
+            }, outputs=metadata,
             artifacts=artifacts, failure=failure,
         )
         self.store.write_receipt(receipt, "tier-c")
         return receipt, metadata
+
+    @staticmethod
+    def _validate_metadata(
+        metadata: dict, contract: dict,
+    ) -> None:
+        checks = (
+            ("min_bytes", lambda actual, expected: actual >= expected),
+            ("max_bytes", lambda actual, expected: actual <= expected),
+        )
+        for key, predicate in checks:
+            if key in contract and not predicate(
+                int(metadata.get("size") or 0), int(contract[key])
+            ):
+                raise ValueError(f"Tier C artifact fails {key}")
+        for key in ("sha256", "media_type"):
+            if key in contract and metadata.get(key) != contract[key]:
+                raise ValueError(f"Tier C artifact fails {key}")
+        wav = metadata.get("wav") or {}
+        wav_checks = {
+            "channels": "channels",
+            "sample_rate_hz": "sample_rate_hz",
+            "sample_width_bits": "sample_width_bits",
+            "duration_min_s": "duration_s",
+            "duration_max_s": "duration_s",
+        }
+        for expected_key, actual_key in wav_checks.items():
+            if expected_key not in contract:
+                continue
+            actual = wav.get(actual_key)
+            expected = contract[expected_key]
+            if expected_key == "duration_min_s":
+                passed = actual is not None and actual >= expected
+            elif expected_key == "duration_max_s":
+                passed = actual is not None and actual <= expected
+            else:
+                passed = actual == expected
+            if not passed:
+                raise ValueError(f"Tier C artifact fails {expected_key}")

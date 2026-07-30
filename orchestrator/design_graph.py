@@ -378,8 +378,13 @@ class DesignGraphNodes:
             for item in grounding_diagnostics
             if item.get("severity", "BLOCKING") == "BLOCKING"
         ]
-        contract_validator_errors = validate_contract(contract)
         input_authority = json.loads(Path(state["input_authority_path"]).read_text(encoding="utf-8"))
+        from .resource_resolution import resolve_resource_requirements
+        allocations, allocation_errors = resolve_resource_requirements(contract)
+        if contract.get("resource_requirements"):
+            contract["resource_allocations"] = allocations
+        contract_validator_errors = validate_contract(contract, input_authority)
+        contract_validator_errors.extend(allocation_errors)
         active_unknowns, resolved_unknowns = reconcile_grounding_unknowns(
             contract,
             draft.blocking_unknowns,
@@ -589,8 +594,33 @@ class DesignGraphNodes:
         )
         revision = int(state.get("revision") or next_revision(project_dir))
         target = project_dir / "design-package" / f"rev-{revision:04d}"
+        prepared_target: Path | None = None
         if target.exists():
-            raise FileExistsError(f"design revision already exists: {target}")
+            # ``prepare-revision`` intentionally creates a pending, invalid
+            # amendment shell before Design recomputes the package. Treat
+            # only that exact shell as replaceable; valid or approved
+            # revisions remain immutable and are never overwritten.
+            try:
+                approval = json.loads((target / "approval.json").read_text(encoding="utf-8"))
+                validation = json.loads((target / "design-validation.json").read_text(encoding="utf-8"))
+                manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                raise FileExistsError(f"design revision already exists: {target}")
+            prepared_shell = (
+                approval.get("status") == "PENDING"
+                and validation.get("valid") is False
+                and "revision impact analysis and revalidation required" in validation.get("errors", [])
+                and any(
+                    item.get("name") == "revision-copy"
+                    and item.get("status") == "requires-impact-analysis"
+                    for item in manifest.get("providers", [])
+                    if isinstance(item, dict)
+                )
+            )
+            if not prepared_shell:
+                raise FileExistsError(f"design revision already exists: {target}")
+            prepared_target = target.with_name(f".prepared-{state['session']}")
+            os.replace(target, prepared_target)
         promotion = project_dir / "design-package" / f".promotion-{state['session']}"
         promotion.mkdir(parents=True, exist_ok=False)
         try:
@@ -676,6 +706,11 @@ class DesignGraphNodes:
         finally:
             if promotion.exists():
                 shutil.rmtree(promotion)
+            if prepared_target is not None and prepared_target.exists():
+                if not target.exists():
+                    os.replace(prepared_target, target)
+                else:
+                    shutil.rmtree(prepared_target)
         return {
             "mode": "APPROVED_SPEC" if auto_approval else "WAITING_SPEC",
             "phase": "bind" if auto_approval else "approval",

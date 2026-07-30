@@ -46,9 +46,23 @@ def _parser() -> argparse.ArgumentParser:
     resume = sub.add_parser("resume"); _project_arg(resume); _runtime_args(resume)
     resume.add_argument("--approve", action="store_true")
     resume.add_argument("--tier-c-json")
+    rotate = sub.add_parser("rotate-credentials"); _project_arg(rotate); rotate.add_argument("--revision", type=int); rotate.add_argument("--approve", action="store_true")
     pause = sub.add_parser("pause", help="persist an explicit user pause at the next safe graph node")
     _project_arg(pause); pause.add_argument("--revision", type=int); pause.add_argument("--reason", default="explicit user pause")
     status = sub.add_parser("status"); _project_arg(status); status.add_argument("--revision", type=int)
+    report = sub.add_parser("report"); _project_arg(report); report.add_argument("--run-id")
+    await_event = sub.add_parser(
+        "await-event",
+        help="block outside the model until a meaningful project transition",
+    )
+    _project_arg(await_event)
+    await_event.add_argument("--after-seq", type=int, default=0)
+    await_event.add_argument("--timeout", type=float)
+    await_event.add_argument(
+        "--include-progress",
+        action="store_true",
+        help="return non-model progress events as well as action-required events",
+    )
     archive = sub.add_parser("archive-runs", help="compress historical failed-run raw artifacts")
     _project_arg(archive)
     migrate = sub.add_parser("migrate-datasheets", help="deduplicate project component datasheets")
@@ -272,7 +286,34 @@ def _run(project: str, revision: int, intent: str, port: str | None, baud: int, 
             graph = build_graph(REPO_ROOT, saver)
             snapshot = graph.get_state(config)
             value = _resume_input(snapshot, initial, resume_value, Command, project_dir)
-            if value is None and (bool(snapshot.tasks and any(getattr(task, "interrupts", ()) for task in snapshot.tasks)) or (snapshot.values and not snapshot.next)):
+            reenter_recovery = (
+                bool(snapshot.values)
+                and not snapshot.next
+                and not snapshot.tasks
+                and bool(snapshot.values.get("recovery_target") or snapshot.values.get("failed_node"))
+            )
+            if value is not None and snapshot.values and snapshot.values.get("mode") in {"BLOCKED", "FAULTED"}:
+                # A completed LangGraph run has no pending task.  ``Command``
+                # cannot revive it by itself, so use the graph state API to
+                # re-enter the existing recovery boundary; that boundary's
+                # deterministic route schedules the original failed node.
+                graph.update_state(config, value.update, as_node="recover")
+                result = graph.invoke(None, config)
+            elif reenter_recovery:
+                from .policies import material_fingerprint
+                target = snapshot.values.get("recovery_target") or snapshot.values.get("failed_node")
+                current = material_fingerprint(project_dir, dict(snapshot.values))
+                updates = {
+                    "mode": "CONTINUOUS", "failure": None,
+                    "diagnostic": None, "blocker": None,
+                    "cursor": f"RETRY:{target}:resume-repair",
+                    "next_action": f"retry {target} after material change",
+                    "material_fingerprint": current,
+                    "progress_seq": snapshot.values.get("progress_seq", 0) + 1,
+                }
+                graph.update_state(config, updates, as_node="recover")
+                result = graph.invoke(None, config)
+            elif value is None and (bool(snapshot.tasks and any(getattr(task, "interrupts", ()) for task in snapshot.tasks)) or (snapshot.values and not snapshot.next)):
                 result = dict(snapshot.values)
             else:
                 result = graph.invoke(value, config)
@@ -311,24 +352,29 @@ def _pause(project: str, revision: int, reason: str) -> dict:
     recorded = json.loads(thread_ref.read_text(encoding="utf-8"))
     thread_id = str(recorded.get("thread_id") or f"{project}:rev-{revision:04d}")
     config = {"configurable": {"thread_id": thread_id}}
-    with SqliteSaver.from_conn_string(str(runtime.checkpoints)) as saver:
-        graph = build_graph(REPO_ROOT, saver); snapshot = graph.get_state(config)
-        if not snapshot.values:
-            raise RuntimeError("no checkpoint state exists to pause")
-        if snapshot.values.get("mode") in {"COMPLETE", "BLOCKED", "FAULTED", "PAUSED"}:
-            return dict(snapshot.values)
-        if any(getattr(task, "interrupts", ()) for task in snapshot.tasks):
-            raise RuntimeError("checkpoint is waiting for a declared human gate; submit that response instead of pausing")
-        if len(snapshot.next) != 1:
-            raise RuntimeError(f"pause requires exactly one safe next node, got {list(snapshot.next)!r}")
-        next_node = snapshot.next[0]
-        nodes = HarnessNodes(REPO_ROOT)
-        updates = nodes.pause_updates(dict(snapshot.values), next_node, reason)
-        # This is LangGraph's state API, not a checkpoint-file edit.  The
-        # control node has no outgoing edge, so it clears the scheduled work.
-        graph.update_state(config, updates, as_node="pause_control")
-        nodes.record_pause(dict(snapshot.values), updates)
-        return dict(graph.get_state(config).values)
+    # Pause must serialize with graph execution.  Updating a checkpoint while
+    # a live worker holds the runner lock can project PAUSED while that worker
+    # continues a stale node and prevents the later resume from acquiring the
+    # same lock.
+    with _runner_lock(project_dir, revision):
+        with SqliteSaver.from_conn_string(str(runtime.checkpoints)) as saver:
+            graph = build_graph(REPO_ROOT, saver); snapshot = graph.get_state(config)
+            if not snapshot.values:
+                raise RuntimeError("no checkpoint state exists to pause")
+            if snapshot.values.get("mode") in {"COMPLETE", "BLOCKED", "FAULTED", "PAUSED"}:
+                return dict(snapshot.values)
+            if any(getattr(task, "interrupts", ()) for task in snapshot.tasks):
+                raise RuntimeError("checkpoint is waiting for a declared human gate; submit that response instead of pausing")
+            if len(snapshot.next) != 1:
+                raise RuntimeError(f"pause requires exactly one safe next node, got {list(snapshot.next)!r}")
+            next_node = snapshot.next[0]
+            nodes = HarnessNodes(REPO_ROOT)
+            updates = nodes.pause_updates(dict(snapshot.values), next_node, reason)
+            # This is LangGraph's state API, not a checkpoint-file edit.  The
+            # control node has no outgoing edge, so it clears the scheduled work.
+            graph.update_state(config, updates, as_node="pause_control")
+            nodes.record_pause(dict(snapshot.values), updates)
+            return dict(graph.get_state(config).values)
 
 
 def _main(argv: list[str] | None = None) -> int:
@@ -406,19 +452,65 @@ def _main(argv: list[str] | None = None) -> int:
     if args.command == "prepare-revision":
         from .design_package import create_revision
         print(create_revision(REPO_ROOT, project, args.from_revision, args.to_revision)); return 0
+    if args.command == "report":
+        from .run_metrics import build_run_report
+        print(json.dumps(
+            build_run_report(REPO_ROOT, project, args.run_id),
+            ensure_ascii=False,
+            indent=2,
+        ))
+        return 0
+    if args.command == "rotate-credentials":
+        if not args.approve:
+            raise ValueError("credential rotation requires explicit --approve")
+        from .credential_rotation import authorize_credential_rotation
+        design_dir, _ = _design_dir(project_dir, args.revision)
+        print(json.dumps(authorize_credential_rotation(REPO_ROOT, project, design_dir), ensure_ascii=False, indent=2))
+        return 0
     if args.command == "status":
         from .execution_jobs import read_execution_job
+        from .control_events import latest_control_event_seq
 
+        event_seq = latest_control_event_seq(REPO_ROOT, project)
         execution_job = read_execution_job(REPO_ROOT, project)
         if execution_job.get("mode") == "CONTINUOUS":
-            print(json.dumps(execution_job, ensure_ascii=False, indent=2))
+            print(json.dumps(
+                {**execution_job, "event_seq": event_seq},
+                ensure_ascii=False, indent=2,
+            ))
             return 0
         path = project_dir / "execution" / "run-state.json"
         if path.exists():
-            print(path.read_text(encoding="utf-8")); return 0
+            projection = json.loads(path.read_text(encoding="utf-8"))
+            print(json.dumps(
+                {**projection, "event_seq": event_seq},
+                ensure_ascii=False, indent=2,
+            ))
+            return 0
         from .design_jobs import read_design_job
         design_job = read_design_job(REPO_ROOT, project)
-        print(json.dumps(design_job or {"status": "NOT_STARTED"}, ensure_ascii=False, indent=2)); return 0
+        print(json.dumps(
+            {**(design_job or {"status": "NOT_STARTED"}), "event_seq": event_seq},
+            ensure_ascii=False, indent=2,
+        )); return 0
+    if args.command == "await-event":
+        from .control_events import await_control_event
+
+        event = await_control_event(
+            REPO_ROOT,
+            project,
+            after_seq=args.after_seq,
+            timeout_s=args.timeout,
+            model_action_only=not args.include_progress,
+        )
+        if event is None:
+            print(json.dumps({
+                "mode": "NO_EVENT",
+                "after_seq": args.after_seq,
+            }))
+            return 3
+        print(json.dumps(event, ensure_ascii=False, indent=2))
+        return 0
     if args.command == "archive-runs":
         from .archive import archive_historical_failures
         print(json.dumps(archive_historical_failures(project_dir), ensure_ascii=False, indent=2)); return 0

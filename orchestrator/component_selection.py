@@ -240,6 +240,16 @@ def required_operations_for_subsystem(
     contract: dict[str, Any], subsystem: dict[str, Any]
 ) -> list[str]:
     """Return explicit operations, with a conservative generic legacy bridge."""
+    from .schema_capabilities import schema_has
+    if schema_has(
+        str(contract.get("schema_version") or ""), "typed_operations"
+    ):
+        owner = str(subsystem.get("id") or "")
+        return [
+            str(item["operation_id"])
+            for item in contract.get("operations", [])
+            if isinstance(item, dict) and item.get("owner") == owner
+        ]
     explicit = subsystem.get("required_operations")
     if isinstance(explicit, list) and explicit:
         return list(dict.fromkeys(str(item) for item in explicit if str(item)))

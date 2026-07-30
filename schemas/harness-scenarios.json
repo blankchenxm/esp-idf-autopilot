@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "scenarios": [
+    {"scenario_id":"SCN-001-MISSING-TRANSPORT-AUTHORITY","expected_boundary":"operation_authority","downstream_forbidden":["implementation_materialize","flash"]},
+    {"scenario_id":"SCN-002-UNSUPPORTED-OPERATION","expected_boundary":"source_validate","downstream_forbidden":["configure","flash"]},
+    {"scenario_id":"SCN-003-EMPTY-ORCHESTRATOR","expected_boundary":"production_composition","downstream_forbidden":["integration","release_prepare"]},
+    {"scenario_id":"SCN-004-INTEGRATION-BYPASS","expected_boundary":"integration_evaluate","downstream_forbidden":["tier_c_artifact_materialization","closure"]},
+    {"scenario_id":"SCN-005-TIER-C-NO-PRODUCER","expected_boundary":"design_validate","downstream_forbidden":["integration_prepare","tier_c"]},
+    {"scenario_id":"SCN-006-COMPATIBLE-BATCH","expected_boundary":"complete","downstream_forbidden":[]},
+    {"scenario_id":"SCN-007-INCOMPATIBLE-IMAGE","expected_boundary":"complete","downstream_forbidden":[]},
+    {"scenario_id":"SCN-008-DEAD-WORKER","expected_boundary":"status_reconcile","downstream_forbidden":["automatic_model_continuation"]},
+    {"scenario_id":"SCN-009-AFFECTED-CONSUMER-REPAIR","expected_boundary":"complete","downstream_forbidden":[]},
+    {"scenario_id":"SCN-010-FRESH-RELEASE-HASH","expected_boundary":"complete","downstream_forbidden":[]},
+    {"scenario_id":"SCN-011-PROGRESS-NO-MODEL-WAKE","expected_boundary":"control_event_delivery","downstream_forbidden":["model_context"]},
+    {"scenario_id":"SCN-012-OWNER-CONTEXT-ISOLATION","expected_boundary":"model_context","downstream_forbidden":["unscoped_model_call"]},
+    {"scenario_id":"SCN-013-UNTYPED-ADAPTER","expected_boundary":"recover","downstream_forbidden":["implementation_materialize"]},
+    {"scenario_id":"SCN-014-LINEAGE-BUDGET","expected_boundary":"recover","downstream_forbidden":["second_model_repair"]},
+    {"scenario_id":"SCN-015-TRANSACTION-CRASH-MATRIX","expected_boundary":"exact_failed_transaction","downstream_forbidden":["ancestor_replay"]},
+    {"scenario_id":"SCN-016-LEGACY-SCHEMA-MIGRATION","expected_boundary":"schema_gate","downstream_forbidden":["bind","flash"]},
+    {"scenario_id":"SCN-017-READY-ONLY-RELEASE","expected_boundary":"release_validate","downstream_forbidden":["terminal"]},
+    {"scenario_id":"SCN-018-RELEASE-NO-FULLCLEAN","expected_boundary":"release_fullclean","downstream_forbidden":["release_configure","release_build"]},
+    {"scenario_id":"SCN-019-LOWLEVEL-IN-MAIN","expected_boundary":"component_architecture","downstream_forbidden":["production_composition","release_prepare"]},
+    {"scenario_id":"SCN-020-INVARIANT-REGISTRY-GAP","expected_boundary":"invariant_gate","downstream_forbidden":["schema_gate","bind"]},
+    {"scenario_id":"SCN-021-PROJECT-HYGIENE","expected_boundary":"initialize","downstream_forbidden":["configure","build","flash"]}
+  ]
+}

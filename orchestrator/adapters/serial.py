@@ -13,8 +13,22 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from ..models import Failure, FailureCategory, Receipt
-from ..codex_runner import background_creationflags
+from ..codex_runner import background_creationflags, hidden_powershell_command, hidden_startupinfo
 from ..storage import ProjectStore, file_ref
+from ..transactions import idempotency_authority
+
+
+_FIRMWARE_ERROR_OWNER = re.compile(r"^E\s+\(\d+\)\s+([A-Za-z][A-Za-z0-9_]*):", re.MULTILINE)
+
+
+def _fatal_owner(text: str) -> str | None:
+    """Return the component that logged immediately before an app fatal marker."""
+    fatal_at = text.rfind("CRUMB_FATAL")
+    if fatal_at < 0:
+        return None
+    owners = _FIRMWARE_ERROR_OWNER.findall(text[:fatal_at])
+    owners = [owner for owner in owners if owner != "crumb"]
+    return owners[-1] if owners else None
 
 
 class SerialAdapter:
@@ -64,8 +78,9 @@ class SerialAdapter:
             "ForEach-Object { taskkill /PID $_.ProcessId /T /F | Out-Null }"
         )
         with suppress(Exception):
-            subprocess.run(["powershell", "-NoProfile", "-Command", script], stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, check=False, timeout=10)
+            subprocess.run(hidden_powershell_command("-Command", script), stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=False, timeout=10,
+                           creationflags=background_creationflags(), startupinfo=hidden_startupinfo())
 
     async def _bounded_call(self, name: str, arguments: dict, timeout_s: float) -> str:
         return await asyncio.wait_for(self._call(name, arguments, timeout_s=timeout_s), timeout=timeout_s + 5.0)
@@ -83,7 +98,7 @@ class SerialAdapter:
                    "--run-id", self.run_id]
         process = subprocess.Popen(command, cwd=self.repo_root, text=True, encoding="utf-8", errors="replace",
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   creationflags=background_creationflags())
+                                   creationflags=background_creationflags(), startupinfo=hidden_startupinfo())
         try:
             output, _ = process.communicate(timeout=timeout_s + 5.0)
         except subprocess.TimeoutExpired:
@@ -102,11 +117,12 @@ class SerialAdapter:
         timeout: float,
         marker: str | None = None,
         *,
+        operation: str = "serial_boot_capture",
         idempotency_key: str | None = None,
     ) -> Receipt:
         if idempotency_key and (
             cached := self.store.find_successful_receipt(
-                "serial_boot_capture", idempotency_key
+                operation, idempotency_key
             )
         ):
             return cached
@@ -135,6 +151,28 @@ class SerialAdapter:
         log_path.write_text(text, encoding="utf-8")
         marker_found = bool(marker and marker in text)
         success = error is None and (not marker or marker_found)
-        failure = None if success else Failure(category=FailureCategory.SERIAL, summary=(f"serial MCP error: {error}" if error else f"expected marker missing: {marker}"))
-        receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation="serial_boot_capture", started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success, inputs={"port": port, "baud": baud, "timeout": timeout, "expected_marker": marker, "idempotency_key": idempotency_key}, outputs={"marker_found": marker_found, "bounded_capture": not bool(marker)}, artifacts=[file_ref(log_path, self.store.project_dir, "text/plain")], failure=failure)
+        if success:
+            failure = None
+        elif error is not None:
+            failure = Failure(
+                category=FailureCategory.SERIAL,
+                summary=f"serial MCP error: {error}",
+            )
+        elif "CRUMB_FATAL" in text or "_AUTHORITY_GAP missing=" in text:
+            failure = Failure(
+                category=FailureCategory.STATE_MACHINE,
+                summary=(
+                    f"firmware emitted authority/state failure before expected marker: {marker}"
+                ),
+                owner=_fatal_owner(text) or (
+                    _FIRMWARE_ERROR_OWNER.findall(text)[-1]
+                    if _FIRMWARE_ERROR_OWNER.findall(text) else None
+                ),
+            )
+        else:
+            failure = Failure(
+                category=FailureCategory.SERIAL,
+                summary=f"expected marker missing: {marker}",
+            )
+        receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation=operation, started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success, inputs={"port": port, "baud": baud, "timeout": timeout, "expected_marker": marker, "idempotency_key": idempotency_key, "idempotency_authority": idempotency_authority(idempotency_key)}, outputs={"marker_found": marker_found, "bounded_capture": not bool(marker)}, artifacts=[file_ref(log_path, self.store.project_dir, "text/plain")], failure=failure)
         self.store.write_receipt(receipt, "serial"); return receipt

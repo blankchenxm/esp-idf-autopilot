@@ -67,6 +67,17 @@ def test_repeated_unchanged_failure_becomes_stall(tmp_path: Path):
     assert updates["mode"] == RunMode.FAULTED.value and updates["blocker"]["kind"] == "internal_stall"
 
 
+def test_firmware_selftest_uses_bounded_harness_capture_default(tmp_path: Path):
+    nodes = HarnessNodes(tmp_path)
+    rows = [{"expected": {"marker": "PASS"}}]
+
+    assert nodes._serial_timeout(rows, {"kind": "firmware_selftest"}) == 60
+    assert nodes._serial_timeout(rows, {"kind": "normal_boot"}) == 15
+    assert nodes._serial_timeout(
+        [{"timeout_s": 37}], {"kind": "firmware_selftest"}
+    ) == 37
+
+
 def test_complete_projection_never_retains_historical_blocker(tmp_path: Path):
     nodes = HarnessNodes(tmp_path); current = state(tmp_path)
     current["blocker"] = {"kind": "stall", "summary": "old", "evidence": "x", "needed": "change"}
@@ -99,6 +110,29 @@ def test_missing_owner_source_runs_the_materialization_adapter(tmp_path: Path):
             [{"expected": {"marker": "READY"}}],
         )
     assert receipts == ["agent-1"]
+
+
+def test_compliant_existing_source_never_runs_materialization_adapter(tmp_path: Path):
+    current = state(tmp_path)
+    project = Path(current["project_dir"])
+    design = project / "design-package" / "rev-0001"
+    design.mkdir(parents=True)
+    (design / "execution-contract.json").write_text("{}", encoding="utf-8")
+    current["design_dir"] = str(design)
+    (project / "CMakeLists.txt").write_text("cmake_minimum_required(VERSION 3.16)\n")
+    component = project / "components" / "probe"
+    (component / "include").mkdir(parents=True)
+    (component / "CMakeLists.txt").write_text("idf_component_register(SRCS \"probe.c\" INCLUDE_DIRS \"include\")\n")
+    (component / "probe.c").write_text("void probe(void) {}\n")
+    (component / "include" / "probe.h").write_text("#pragma once\n")
+
+    with patch("orchestrator.graph.AgentAdapter.execute") as execute:
+        receipts = HarnessNodes(tmp_path)._materialize_owner_source(
+            current, project, HarnessNodes(tmp_path)._context(current)[1], "probe", []
+        )
+
+    assert receipts == []
+    execute.assert_not_called()
 
 
 def test_repairable_build_failure_runs_owner_patch_before_retry(tmp_path: Path):
@@ -158,10 +192,67 @@ def test_repairable_build_failure_runs_owner_patch_before_retry(tmp_path: Path):
     assert "agent-repair" in updates["receipt_ids"]
 
 
+def test_harness_change_retries_diagnostic_without_its_own_material_fingerprint(tmp_path: Path):
+    current = state(tmp_path)
+    current.update({
+        "failed_node": "integration",
+        "material_fingerprint": "before-harness-fix",
+        "failure": {
+            "category": FailureCategory.INTEGRATION.value,
+            "summary": "integration marker missing",
+            "owner": "crumb_integration",
+            "retryable": True,
+            "fingerprint": "b" * 64,
+            "evidence": [],
+        },
+        "diagnostic": Diagnostic(
+            code="INTEGRATION_EXPECTATION_FAILED",
+            cause=FailureCategory.INTEGRATION,
+            disposition=FailureDisposition.REPAIR_INTERNAL,
+            responsible_party="implementation_agent",
+            affected_owner="crumb_integration",
+            summary="integration marker missing",
+        ).model_dump(mode="json"),
+    })
+
+    with patch("orchestrator.graph.material_fingerprint", return_value="after-harness-fix"), \
+         patch("orchestrator.graph.AgentAdapter.execute") as execute:
+        updates = HarnessNodes(tmp_path).recover(current)
+
+    execute.assert_not_called()
+    assert updates["recovery_target"] == "integration"
+
+
 def test_bootstrap_subsystem_materializes_owner_before_source_gate():
     source = Path("orchestrator/graph.py").read_text(encoding="utf-8")
     bootstrap = source.split("if not rows:", 1)[1].split("for owner in owners:", 1)[1]
     assert "_materialize_owner_source" in bootstrap
+
+
+def test_audio_authority_repair_receives_versioned_product_defaults():
+    assert "audio-pcm-v1" in HarnessNodes._product_default_instruction("audio_pipeline")
+    assert "48_000 Hz" in HarnessNodes._product_default_instruction("audio_pipeline")
+
+
+def test_project_kconfig_override_must_be_declared(tmp_path: Path):
+    project = tmp_path / "demo"
+    component = project / "components" / "owner"
+    component.mkdir(parents=True)
+    (component / "Kconfig").write_text(
+        "config DEMO_TEST\n    bool \"test\"\n", encoding="utf-8"
+    )
+    assert HarnessNodes._missing_project_kconfig_overrides(
+        project, {"CONFIG_DEMO_TEST": "y"}
+    ) == []
+    assert HarnessNodes._missing_project_kconfig_overrides(
+        project, {"CONFIG_DEMO_MISSING": "y"}
+    ) == ["CONFIG_DEMO_MISSING"]
+
+
+def test_release_selftest_config_accepts_structured_legacy_form():
+    assert HarnessNodes._release_selftest_symbol({"release": {
+        "selftest_config": {"CONFIG_DEMO_SELFTEST": "n"}
+    }}) == "CONFIG_DEMO_SELFTEST"
 
 
 def test_material_change_resume_clears_the_historical_blocker(tmp_path: Path):

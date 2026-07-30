@@ -53,6 +53,14 @@ def owner_contract_view(contract: dict[str, Any], owner: str) -> dict[str, Any]:
             item for item in contract.get("verification", [])
             if item.get("owner") == owner or item.get("requirement_id") in requirement_ids
         ],
+        "operations": [
+            item for item in contract.get("operations", [])
+            if item.get("owner") == owner
+        ],
+        "implementation_facts": [
+            item for item in contract.get("implementation_facts", [])
+            if item.get("subsystem_id") == owner
+        ],
         "component_selections": [
             item for item in contract.get("component_selections", [])
             if item.get("subsystem_id") in visible_owners

@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 from .storage import atomic_write_json, file_ref
 from .storage import ProjectStore
-from .codex_runner import codex_command, codex_creationflags, isolated_codex_profile, is_authentication_failure, terminate_process_tree
+from .codex_runner import codex_command, codex_creationflags, hidden_powershell_command, isolated_codex_profile, is_authentication_failure, terminate_process_tree
 from .validators import design_digest, validate_contract, validate_design_package
 from .adapters.design_grounding import DesignGroundingAdapter
 from .runtime_paths import ProjectRuntime
@@ -25,6 +25,12 @@ from .secrets import assert_no_secret_values, redact_text, secret_values
 from .design_inventory import materialize_grounding_requirements
 from .input_authority import exact_authorized_identifier
 from .input_authority import compile_input_authority
+from .model_context import (
+    build_readonly_context_envelope,
+    parse_codex_jsonl_usage,
+    validate_model_usage_budget,
+)
+from .schema_capabilities import current_schema_version, schema_has
 
 
 @dataclass(frozen=True)
@@ -119,9 +125,10 @@ def normalize_design_execution_contract(contract: dict[str, Any]) -> dict[str, A
     an initial provider draft and a repair draft after preservation/merging.
     """
     contract = copy.deepcopy(contract)
+    version = str(contract.get("schema_version") or "")
     workflow_stages = (
         _LEGACY_WORKFLOW_STAGES
-        if contract.get("schema_version") in {"1.0", "1.1"}
+        if version and not schema_has(version, "verification_batch")
         else _REQUIRED_WORKFLOW_STAGES
     )
     contract["workflow"] = {"stages": list(workflow_stages)}
@@ -187,6 +194,16 @@ def _repair_contract_slice(contract: dict[str, Any], errors: list[str]) -> dict[
     test_ids = {str(row.get("test_id")) for row in verification}
     owners = {str(row.get("owner")) for row in verification}
     requirement_ids = {str(row.get("requirement_id")) for row in verification}
+    operations = [
+        row for row in contract.get("operations", [])
+        if isinstance(row, dict)
+        and (
+            str(row.get("operation_id") or "") in messages
+            or str(row.get("owner") or "") in owners
+            or str((row.get("runtime_probe") or {}).get("test_id") or "")
+            in test_ids
+        )
+    ]
     return {
         "project": contract.get("project"),
         "requirements": [
@@ -198,6 +215,10 @@ def _repair_contract_slice(contract: dict[str, Any], errors: list[str]) -> dict[
             if isinstance(row, dict) and str(row.get("id")) in owners
         ],
         "verification": verification,
+        "operations": operations,
+        "architecture": contract.get("architecture"),
+        "integration": contract.get("integration"),
+        "release": contract.get("release"),
         "tier_c": [
             row for row in contract.get("tier_c", [])
             if isinstance(row, dict) and str(row.get("test_id") or "") in test_ids
@@ -414,13 +435,19 @@ def _preserve_complete_contract_rows(
         ("requirements", "id"),
         ("subsystems", "id"),
         ("tier_c", "id"),
+        ("operations", "operation_id"),
     )
     for name, identity in collections:
         current = value.get(name)
         prior = prior_contract.get(name)
         if not isinstance(prior, list):
             continue
-        if not isinstance(current, list):
+        # The structured-output schema represents an omitted collection as an
+        # empty list.  In a bounded repair that is a partial-patch sentinel,
+        # not authority to erase an already synthesized product contract.
+        # An explicit row-level change remains possible because non-empty
+        # collections still merge by their stable identity below.
+        if not isinstance(current, list) or (not current and prior):
             value[name] = copy.deepcopy(prior)
             continue
         previous = {
@@ -441,7 +468,7 @@ def _preserve_complete_contract_rows(
     prior_rows = prior_contract.get("verification")
     current_rows = value.get("verification")
     if isinstance(prior_rows, list):
-        if not isinstance(current_rows, list):
+        if not isinstance(current_rows, list) or (not current_rows and prior_rows):
             value["verification"] = copy.deepcopy(prior_rows)
         else:
             prior_by_test = {
@@ -506,6 +533,7 @@ def _codex_design_command(work: Path, schema: Path, output: Path) -> list[str]:
     """Build a provider command without outer-session plugin/MCP initialization."""
     command = codex_command() + [
         "exec",
+        "--json",
         "--ephemeral",
         "--ignore-user-config",
         # The provider context is intentionally a disposable directory under
@@ -601,6 +629,12 @@ subsystem; create a dependency DAG; assign every R/DR owner and verification row
 expected marker/value/range/count/duration/tolerance and evidence. Freeze FreeRTOS ownership.
 Every subsystem must declare execution_role: component for an independently brought-up component,
 or integration for the one final cross-component integration node. Never infer a role from a name.
+For the current schema, architecture.runtime_flow is mandatory. It is the production (selftest-off)
+execution graph, not a test description: declare one system_orchestration entrypoint symbol and
+ordered steps. Each step names its owner, one owner required_operation, product symbol,
+requirement_ids, optional preceding steps, and source_assertions. Every R/DR must appear in at
+least one step. Every integration test must declare runtime_step_ids that cover all of its
+requirement_ids. A component selftest or a simulation-only helper is never a runtime-flow step.
 Every external_part subsystem must declare its exact manufacturer part_number. This field is
 mandatory even when no Registry component or Datasheet source is known; the Harness derives its
 grounding plan from this inventory and performs acquisition itself.
@@ -615,6 +649,11 @@ required_operations with the finally selected component and acquires only missin
 coding or hardware access. Emit product_decisions separately for behavior, safety,
 resource-budget, and external protocol choices. Only a genuine product choice may become a
 user-owned unresolved item.
+Emit the current typed operations table. Every operation_id binds one owner, kind, risk,
+named capabilities, exact authority_sources with capability_ids, implementation assertions,
+a runtime probe, and consumers. Never use owner-wide component coverage, prose inference, or
+a policy default for hardware/register/transport/destructive/safety operations. Policy defaults
+are allowed only for versioned host algorithms, product policy, or system orchestration.
 Every verification row must also provide evidence_contract with observation and required_kinds.
 Use build_receipt/flash_receipt/serial_log/firmware_hash/hardware_identity/artifact/
 protocol_receipt/user_confirmation as applicable; only Tier C may require user_confirmation.
@@ -623,7 +662,7 @@ serial_log, firmware_hash, and hardware_identity. Do not require artifact or
 protocol_receipt for Tier A/B: those runtime transactions are unavailable outside
 the declared Tier C artifact flow. A WAV selftest is therefore a serial/readback
 observation, not an artifact-evidence request.
-Set schema_version to "1.5". Every Tier A/B verification row must declare an executable
+Set schema_version to "{current_schema_version()}". Every Tier A/B verification row must declare an executable
 test_setup and stimulus. Use normal_boot + none for normal boot evidence. If markers require a
 firmware selftest, declare firmware_selftest with isolated_build=true, explicit
 kconfig_overrides, and firmware_simulation; the runner builds, flashes, and captures that image
@@ -638,10 +677,19 @@ product_policy for user-visible state behavior, system_orchestration for lifecyc
 integration only for the final cross-component node. Do not make one ESP-IDF facility a public
 component merely because it exists; GPIO/I2C/SPI/I2S/NVS/Wi-Fi/HTTP/SNTP are internal capabilities
 unless they own a stable shared boundary. Propose batches during design:
+Represent peripheral buses through protocol-neutral resource_requirements and resource_capabilities.
+Adapters normalize datasheet limits and local ESP-IDF capabilities into constraints/candidates; the
+Harness selects one compatible unclaimed candidate and records resource_allocations with provenance.
+Do not create per-protocol decision flows. Ask for a user decision only when no candidate satisfies
+the evidence-bound constraints or multiple policy-distinct choices remain.
 external-chip/register/DMA/audio/storage/destructive or ambiguous tests must be isolated; verified
 non-destructive compatible owners must set batch_compatible=true and share one contiguous
 dependency-ordered batch. Runtime never changes this decision. Every Tier C item must independently declare test_id, owner, expected,
 and evidence_contract; it must not borrow those fields from an A/B verification row.
+Every non-physical Tier C item must additionally declare its integration/production producer
+test, producer operation IDs, delivery method, correlation key, required producer Receipt
+kinds, and deterministic artifact validation. A local path without an executable producer is
+invalid and must never become a request for the user to create a missing file.
 Each verification_batch has exactly one test_setup value. If any row for an owner
 in a batch needs a different setup (for example normal_boot instead of
 firmware_selftest, or different selftest Kconfig overrides), assign that owner a
@@ -649,6 +697,11 @@ different batch; never mix setup objects within one batch.
 For a product with normal runtime orchestration, set release.early_smoke=true so the Harness
 performs one isolated selftest-off build/flash/boot immediately after component bring-up and before
 expensive integration. The final release transaction is still mandatory and fresh.
+Declare architecture.component_api_manifest with semantic APIs, resources, exact dependencies,
+allowed dependency layers, and test_only status. Extend runtime_flow with production config,
+typed edges/ports/transitions, operation_ids, and observation points. Integration must declare
+production_scenarios that enter through the same normal entrypoint. Release must select at least
+one core production scenario and declare forbidden runtime patterns.
 Its artifact_contract must be executable: local_file source is a project-relative file path
 (optionally templated only with {{run_id}}/{{item_id}}), download_url source is an absolute
 HTTP(S) URL, and physical_observation is used only when no file or URL can exist. Never put prose,
@@ -749,8 +802,35 @@ ERRORS (the exact fields to repair):
             # This prevents a provider mistake from deleting user project
             # state outside that context.
             command = _codex_design_command(work, schema, output)
+            authority_files = [
+                path for path in work.rglob("*")
+                if path.is_file()
+                and path.name not in {
+                    "model-context.json",
+                    "provider-prompt.txt",
+                }
+            ]
+            envelope = build_readonly_context_envelope(
+                project=project,
+                reason=(
+                    "design_structural_repair"
+                    if self.repair_draft is not None
+                    else "design_synthesis"
+                ),
+                instruction=instruction,
+                workspace=work,
+                authority_files=authority_files,
+                secret_values=secrets,
+            )
+            context_path = work / "model-context.json"
+            atomic_write_json(context_path, envelope)
             prompt_path = work / "provider-prompt.txt"
-            prompt_path.write_text(instruction, encoding="utf-8")
+            prompt_path.write_text(
+                "Read model-context.json and every authority file it names. "
+                "Perform exactly that read-only Design task and return only "
+                "the schema-conforming result.\n",
+                encoding="utf-8",
+            )
             for auth_attempt in range(2):
                 with prompt_path.open("r", encoding="utf-8") as prompt_handle:
                     process = subprocess.Popen(
@@ -778,7 +858,30 @@ ERRORS (the exact fields to repair):
                             f"Codex design provider timed out after {self.timeout} seconds: {partial[-2000:]}"
                         ) from exc
                 if process.returncode == 0:
-                    return _decode_codex_design_output(json.loads(output.read_text(encoding="utf-8")))
+                    decoded = _decode_codex_design_output(
+                        json.loads(output.read_text(encoding="utf-8"))
+                    )
+                    usage = parse_codex_jsonl_usage(provider_output)
+                    budget_errors = validate_model_usage_budget(
+                        usage, envelope["budgets"]
+                    )
+                    if budget_errors:
+                        raise RuntimeError(
+                            "Design provider model budget exceeded: "
+                            + "; ".join(budget_errors)
+                        )
+                    return DesignDraft(
+                        spec_markdown=decoded.spec_markdown,
+                        execution_contract=decoded.execution_contract,
+                        providers=decoded.providers + [{
+                            "kind": "design_model_transaction",
+                            "model_context_digest": envelope["context_digest"],
+                            "model_context_bytes": context_path.stat().st_size,
+                            "model_usage": usage,
+                            "budgets": envelope["budgets"],
+                        }],
+                        blocking_unknowns=decoded.blocking_unknowns,
+                    )
                 if auth_attempt == 0 and is_authentication_failure(provider_output):
                     # Cockpit updates ~/.codex/auth.json for the next account.
                     # Give that atomic switch a moment, then launch a fresh
@@ -899,12 +1002,14 @@ ERRORS:
 
 
 def _input_refs(repo_root: Path, project: str) -> list[dict[str, Any]]:
+    from .input_authority import semantic_input_ref
+
     refs = []
     for area in ("requirements", "connections"):
         path = repo_root / area / f"{project}.md"
         if not path.is_file():
             raise FileNotFoundError(f"required user input is missing: {path}")
-        refs.append(file_ref(path, repo_root, "text/markdown").model_dump())
+        refs.append(semantic_input_ref(path, repo_root, area))
     return refs
 
 
@@ -969,7 +1074,7 @@ def _stage_grounding_context(repo_root: Path, project: str, work: Path, contract
     activation = repo_root / "activate.local.ps1"
     if not idf_path and activation.is_file():
         result = subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", f". '{activation}'; Write-Output $env:IDF_PATH"],
+            hidden_powershell_command("-ExecutionPolicy", "Bypass", "-Command", f". '{activation}'; Write-Output $env:IDF_PATH"),
             cwd=repo_root,
             text=True,
             encoding="utf-8",
@@ -1041,7 +1146,7 @@ def _ground_contract(contract: dict[str, Any], grounding: DesignGroundingAdapter
         if isinstance(item, dict)
     }
     for subsystem in subsystem_definitions.values():
-        if value.get("schema_version") in {"1.4", "1.5"} and subsystem.get("classification") == "external_part":
+        if schema_has(str(value.get("schema_version")), "input_authority") and subsystem.get("classification") == "external_part":
             part = str(subsystem.get("part_number") or "")
             if authority and not exact_authorized_identifier(authority, part):
                 internal("INPUT_AUTHORITY_VIOLATION", f"{subsystem.get('id')} part_number {part!r} is not an exact user input identifier", owner=str(subsystem.get("id") or ""), party="design_provider")
@@ -1391,6 +1496,30 @@ def create_revision(repo_root: Path, project: str, source_revision: int, target_
     for name in ("spec.md", "execution-contract.json"):
         shutil.copy2(source / name, target / name)
     contract = json.loads((target / "execution-contract.json").read_text(encoding="utf-8"))
+    from .schema_capabilities import current_schema_version, require_executable_schema
+    migration_errors = require_executable_schema(contract)
+    atomic_write_json(target / "migration-report.json", {
+        "schema_version": "1.0",
+        "project_id": project,
+        "source_revision": source_revision,
+        "target_revision": target_revision,
+        "source_contract_schema": contract.get("schema_version"),
+        "target_contract_schema": current_schema_version(),
+        "derived_fields": [],
+        "unresolved_fields": [
+            "operations",
+            "architecture.component_api_manifest",
+            "architecture.runtime_flow typed edges/ports/transitions",
+            "integration.production_scenarios",
+            "Tier C producer chains",
+            "release core scenarios and forbidden patterns",
+        ] if migration_errors else [],
+        "input_files_unchanged": [
+            f"requirements/{project}.md",
+            f"connections/{project}.md",
+        ],
+        "status": "DESIGN_RECOMPILATION_REQUIRED" if migration_errors else "IMPACT_ANALYSIS_REQUIRED",
+    })
     manifest = {"schema_version": "1.0", "project_id": project, "revision": target_revision, "inputs": _input_refs(repo_root, project), "providers": [{"name": "revision-copy", "kind": "design-generator", "source_revision": source_revision, "status": "requires-impact-analysis"}], "files": [file_ref(target / name, target, "text/markdown" if name.endswith(".md") else "application/json").model_dump() for name in ("spec.md", "execution-contract.json")]}
     calculated = design_digest(contract, manifest); manifest["design_digest"] = calculated
     atomic_write_json(target / "manifest.json", manifest)

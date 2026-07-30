@@ -69,6 +69,13 @@ def test_v12_tier_c_accepts_only_supported_artifact_path_templates():
     assert any("unsupported template fields" in error for error in validate_contract(contract))
 
 
+def test_missing_produced_tier_c_file_is_not_delegated_to_the_user():
+    source = Path("orchestrator/graph.py").read_text(encoding="utf-8")
+    assert "TIER_C_ARTIFACT_AWAITING_PHYSICAL_CAPTURE" not in source
+    assert "TIER_C_PRODUCER_CHAIN_MISSING" in source
+    assert "perform the approved physical capture and place" not in source
+
+
 def test_confirmation_must_bind_presented_artifact_hash(tmp_path: Path):
     project = tmp_path / "projects" / "demo"; design = project / "design-package" / "rev-0001"
     design.mkdir(parents=True)

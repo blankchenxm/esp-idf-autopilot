@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "baseline": {
+    "source": "first Crumb control-flow audit",
+    "input_tokens": 224078716,
+    "cached_input_tokens": 221088256,
+    "automatic_turns": 60,
+    "wait_calls": 664,
+    "status_reads": 455
+  },
+  "bounded_replay": {
+    "description": "Sixty isolated owner transactions at the enforced non-Design input ceiling, plus 1000 coalesced progress ticks.",
+    "owner_transactions": 60,
+    "max_input_tokens_per_transaction": 40000,
+    "input_token_ceiling": 2400000,
+    "progress_ticks": 1000,
+    "model_calls_from_progress": 0,
+    "reduction_percent_floor": 98.9289
+  },
+  "acceptance": {
+    "required_reduction_percent": 55.0,
+    "passed": true
+  },
+  "limitations": [
+    "This is a deterministic budget-bound replay, not a new physical-device run.",
+    "A later clean hardware E2E run must report measured usage through orchestrator.cli report."
+  ]
+}

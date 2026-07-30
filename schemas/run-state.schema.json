@@ -3,6 +3,6 @@
   "$id": "https://esp-autodev.local/schemas/run-state-1.0.json",
   "type": "object",
   "required": ["schema_version", "run_id", "mode", "cursor", "next_action", "progress_seq", "progress_fingerprint", "release_verified"],
-  "properties": {"schema_version": {"const": "1.0"}, "run_id": {"type": "string"}, "mode": {"enum": ["WAITING_SPEC", "CONTINUOUS", "WAITING_TIER_C", "PAUSED", "BLOCKED", "FAULTED", "COMPLETE"]}, "cursor": {"type": "string"}, "next_action": {"type": "string"}, "progress_seq": {"type": "integer", "minimum": 0}, "progress_fingerprint": {"type": "string"}, "release_verified": {"type": "boolean"}},
+  "properties": {"schema_version": {"const": "1.0"}, "run_id": {"type": "string"}, "mode": {"enum": ["WAITING_SPEC", "CONTINUOUS", "WAITING_TIER_C", "PAUSED", "INTERRUPTED", "BLOCKED", "FAULTED", "COMPLETE"]}, "cursor": {"type": "string"}, "next_action": {"type": "string"}, "progress_seq": {"type": "integer", "minimum": 0}, "progress_fingerprint": {"type": "string"}, "release_verified": {"type": "boolean"}},
   "additionalProperties": true
 }

@@ -26,7 +26,7 @@ SIGNALS: list[tuple[FailureCategory, re.Pattern[str]]] = [
     (FailureCategory.TOOL, re.compile(r"mandatory MCP capability probe|TaskGroup", re.I)),
     (FailureCategory.REGISTRY, re.compile(r"registry|component.*not found|mcp", re.I)),
     (FailureCategory.LINK, re.compile(r"undefined reference|multiple definition|linker", re.I)),
-    (FailureCategory.API, re.compile(r"implicit declaration|incompatible.*argument|no member named", re.I)),
+    (FailureCategory.API, re.compile(r"implicit declaration|incompatible.*argument|no member named|undeclared|not declared|does not name a type", re.I)),
     (FailureCategory.FLASH, re.compile(r"failed to connect|write timeout|flash.*failed", re.I)),
     (FailureCategory.SERIAL, re.compile(r"access is denied|port.*busy|serial|marker.*missing", re.I)),
     (FailureCategory.WATCHDOG, re.compile(r"watchdog|task_wdt", re.I)),
@@ -116,6 +116,13 @@ def material_fingerprint(project_dir: Path, state: dict[str, Any]) -> str:
 
 def failure_fingerprint(node: str, category: FailureCategory, summary: str, material: str) -> str:
     normalized = re.sub(r"[0-9a-f]{8,}|COM\d+|\d+", "#", summary.lower())
+    # Disposable implementation mirrors include a random owner-workspace
+    # suffix.  It is not material change: retaining it makes a repeated
+    # Windows path failure look novel forever and defeats bounded recovery.
+    normalized = re.sub(
+        r"agent-work(?:\\\\|/)[^\\\\/\s]+|crumb-[a-z0-9_-]+",
+        "<agent-work>", normalized,
+    )
     return hashlib.sha256(json.dumps({"node": node, "category": category.value, "summary": normalized, "material": material}, sort_keys=True).encode()).hexdigest()
 
 

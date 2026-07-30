@@ -9,7 +9,7 @@ import subprocess
 from orchestrator.adapters.hardware import HardwareAdapter
 from orchestrator.adapters.idf import IdfAdapter
 from orchestrator.adapters.serial import SerialAdapter
-from orchestrator.codex_runner import background_creationflags, codex_creationflags, codex_environment, isolated_codex_profile, is_authentication_failure, terminate_process_tree
+from orchestrator.codex_runner import background_creationflags, codex_creationflags, codex_environment, hidden_powershell_command, hidden_startupinfo, isolated_codex_profile, is_authentication_failure, terminate_process_tree
 from orchestrator.models import HardwareIdentity
 from orchestrator.models import FailureCategory
 from orchestrator.policies import classify_failure
@@ -28,7 +28,7 @@ def test_idf_adapter_always_uses_wrapper(tmp_path: Path):
 
     with patch("subprocess.Popen", return_value=Process()):
         receipt = adapter.version()
-    assert "idf.ps1" in receipt.command[4] and receipt.command[-1] == "--version"
+    assert any("idf.ps1" in argument for argument in receipt.command) and receipt.command[-1] == "--version"
 
 
 def test_serial_cleanup_runs_after_error(tmp_path: Path):
@@ -46,6 +46,24 @@ def test_serial_capture_excludes_monitor_status_line_from_firmware_evidence(tmp_
     log = (store.logs / "run" / f"{receipt.receipt_id}.log").read_text(encoding="utf-8")
     assert receipt.success
     assert log.count("MARKER") == 1
+
+
+def test_serial_capture_routes_firmware_fatal_to_component_repair(tmp_path: Path):
+    store = ProjectStore(tmp_path); store.ensure(); adapter = SerialAdapter(tmp_path, store, "run")
+    with patch.object(adapter, "_worker_call", return_value="E (287) charger_monitor: missing timing\nE (287) crumb: CRUMB_FATAL\n"):
+        receipt = adapter.capture_boot("COM4", 115200, 1, "MARKER")
+    assert receipt.failure is not None
+    assert receipt.failure.category == FailureCategory.STATE_MACHINE
+    assert receipt.failure.owner == "charger_monitor"
+
+
+def test_serial_capture_routes_explicit_authority_gap_to_component_repair(tmp_path: Path):
+    store = ProjectStore(tmp_path); store.ensure(); adapter = SerialAdapter(tmp_path, store, "run")
+    with patch.object(adapter, "_worker_call", return_value="E (287) audio_pipeline: AUDIO_PIPELINE_AUTHORITY_GAP missing=sample_rate\n"):
+        receipt = adapter.capture_boot("COM4", 115200, 1, "MARKER")
+    assert receipt.failure is not None
+    assert receipt.failure.category == FailureCategory.STATE_MACHINE
+    assert receipt.failure.owner == "audio_pipeline"
 
 
 def test_serial_transaction_reuses_exact_integrity_valid_receipt(tmp_path: Path):
@@ -164,6 +182,24 @@ def test_all_background_children_use_no_window_creation_flags_on_windows():
         assert flags & getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
     else:
         assert flags == 0
+
+
+def test_background_children_use_hidden_startupinfo_on_windows():
+    startupinfo = hidden_startupinfo()
+    if os.name == "nt":
+        assert startupinfo is not None
+        assert startupinfo.dwFlags & subprocess.STARTF_USESHOWWINDOW
+        assert startupinfo.wShowWindow == subprocess.SW_HIDE
+    else:
+        assert startupinfo is None
+
+
+def test_harness_powershell_command_is_noninteractive_and_hidden():
+    command = hidden_powershell_command("-Command", "Write-Output ok")
+    assert command[:6] == [
+        "powershell", "-NoLogo", "-NoProfile", "-NonInteractive",
+        "-WindowStyle", "Hidden",
+    ]
 
 
 def test_isolated_codex_profile_stays_under_project_runtime_and_cleans_up(tmp_path: Path):

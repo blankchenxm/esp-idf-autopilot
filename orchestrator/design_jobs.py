@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .runtime_paths import ProjectRuntime
+from .codex_runner import hidden_startupinfo
 from .storage import atomic_write_json
 
 
@@ -65,10 +66,32 @@ def _read(path: Path) -> dict:
 
 def _write(runtime: ProjectRuntime, record: dict) -> None:
     job_id = str(record["job_id"])
-    atomic_write_json(runtime.design_jobs / f"{job_id}.json", record)
+    path = runtime.design_jobs / f"{job_id}.json"
+    previous = _read(path)
+    atomic_write_json(path, record)
     active = _read(runtime.active_design_job)
     if not active or active.get("job_id") == job_id:
         atomic_write_json(runtime.active_design_job, record)
+    observed = ("mode", "phase", "kind", "summary", "revision")
+    if any(previous.get(key) != record.get(key) for key in observed):
+        from .control_events import publish_control_event
+
+        publish_control_event(
+            runtime.repo_root,
+            runtime.project_id,
+            source="design_job",
+            mode=str(record.get("mode") or "UNKNOWN"),
+            reason=next((
+                key for key in observed
+                if previous.get(key) != record.get(key)
+            ), "state_change"),
+            payload={
+                "job_id": record.get("job_id"),
+                "phase": record.get("phase"),
+                "kind": record.get("kind"),
+                "revision": record.get("revision"),
+            },
+        )
 
 
 def update_design_job_progress(
@@ -187,6 +210,7 @@ def _spawn_worker(repo_root: Path, runtime: ProjectRuntime, record: dict) -> sub
             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
             | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         )
+        kwargs["startupinfo"] = hidden_startupinfo()
     else:
         kwargs["start_new_session"] = True
     try:

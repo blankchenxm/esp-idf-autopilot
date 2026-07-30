@@ -116,3 +116,4 @@ def test_blocked_checkpoint_reenters_only_after_material_change(tmp_path, monkey
     monkeypatch.setattr("orchestrator.policies.material_fingerprint", lambda project_dir, state: "new")
     result = _resume_input(snapshot(values), {}, None, CommandStub, project)
     assert result.kwargs["goto"] == "subsystem" and result.kwargs["update"]["material_fingerprint"] == "new"
+

@@ -9,9 +9,16 @@ wall-clock deadline even if an async stdio context blocks while being cancelled.
 import argparse
 import asyncio
 import json
+import sys
 from pathlib import Path
 
 from .adapters.serial import SerialAdapter
+
+
+def _write_result(value: str) -> None:
+    """Emit MCP JSON as UTF-8 regardless of the Windows console code page."""
+    sys.stdout.buffer.write(value.encode("utf-8", errors="replace"))
+    sys.stdout.buffer.flush()
 
 
 def main() -> int:
@@ -25,7 +32,7 @@ def main() -> int:
     call = SerialAdapter(Path(args.repo), None, args.run_id)._call(  # type: ignore[arg-type]
         args.name, json.loads(args.arguments_json), timeout_s=args.timeout
     )
-    print(asyncio.run(call), end="")
+    _write_result(asyncio.run(call))
     return 0
 
 

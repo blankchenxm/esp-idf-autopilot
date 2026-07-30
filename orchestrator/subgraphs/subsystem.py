@@ -16,9 +16,12 @@ def expected_for_owner(contract: dict, owner: str) -> list[dict]:
 
 def verification_batches(contract: dict) -> list[list[str]]:
     """Return frozen contiguous batches; legacy contracts remain singleton."""
+    from ..schema_capabilities import schema_has
     order = subsystem_order(contract)
     definitions = {item["id"]: item for item in contract["subsystems"]}
-    if contract.get("schema_version") not in {"1.2", "1.3"}:
+    if not schema_has(
+        str(contract.get("schema_version") or ""), "verification_batch"
+    ):
         return [[owner] for owner in order]
     result: list[list[str]] = []
     for owner in order:
