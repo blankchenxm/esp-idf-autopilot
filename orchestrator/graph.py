@@ -1721,6 +1721,9 @@ class HarnessNodes:
             and row.get("tier") in {"A", "B"}
         ]
         for row in tests:
+            integration_test_id = row.get("test_id") or row.get("id")
+            if not integration_test_id:
+                raise ValueError("integration test requires id or test_id")
             expected = row.get("expected") or row.get("metrics")
             if not expected: raise ValueError(f"integration test {row.get('id')} requires expected rules")
             serial = serial_adapter.capture_boot(
@@ -1731,7 +1734,7 @@ class HarnessNodes:
                 idempotency_key=self._transaction_key(
                     state,
                     "integration_serial",
-                    test_id=row.get("test_id") or row.get("id"),
+                    test_id=integration_test_id,
                     firmware_sha256=integration_hash,
                     marker=expected.get("marker"),
                     port=state["port"],
@@ -1758,9 +1761,9 @@ class HarnessNodes:
             # not merely a serial transcript.  Derive it deterministically from
             # the just-captured, integrity-bound transcript and bind both the
             # test expectation and evaluated result to a receipt.
-            audit_path = project_dir / "execution" / "artifacts" / f"{row['test_id']}-{serial.receipt_id}.json"
+            audit_path = project_dir / "execution" / "artifacts" / f"{integration_test_id}-{serial.receipt_id}.json"
             atomic_write_json(audit_path, {
-                "schema_version": "1.0", "test_id": row["test_id"],
+                "schema_version": "1.0", "test_id": integration_test_id,
                 "source_serial_receipt": serial.receipt_id,
                 "source_serial_artifact": serial.artifacts[0].model_dump(mode="json"),
                 "expected": expected, "actual": actual,
@@ -1771,13 +1774,13 @@ class HarnessNodes:
                 operation="integration_protocol_audit",
                 started_at=datetime.now(timezone.utc).isoformat(),
                 finished_at=datetime.now(timezone.utc).isoformat(), success=True,
-                inputs={"test_id": row["test_id"], "serial_receipt_id": serial.receipt_id},
+                inputs={"test_id": integration_test_id, "serial_receipt_id": serial.receipt_id},
                 outputs={"actual": actual}, artifacts=[audit_artifact], failure=None,
             )
             store.write_receipt(protocol_receipt, "protocol"); receipt_ids.append(protocol_receipt.receipt_id)
             requirement_ids = row.get("requirement_ids") or [req["id"] for req in contract["requirements"]]
             kinds = self._evidence_kinds(row, {"build_receipt", "flash_receipt", "serial_log", "firmware_hash", "hardware_identity", "artifact", "protocol_receipt"})
-            evidence = Evidence(evidence_id=store.new_id("evidence"), run_id=state["run_id"], design_digest=state["design_digest"], requirement_ids=requirement_ids, test_id=row.get("test_id") or row.get("id", "unnamed"), owner=integration_owner, tier=Tier.B, expected=expected, actual=actual, verdict=Verdict.PASS, receipt_ids=[build.receipt_id, flash.receipt_id, serial.receipt_id, protocol_receipt.receipt_id], evidence_kinds=kinds, artifacts=[audit_artifact], firmware_sha256=firmware_hash, hardware_identity_key="|".join(str(state["hardware_identity"].get(k) or "") for k in ("chip", "mac", "usb_serial", "board_profile")))
+            evidence = Evidence(evidence_id=store.new_id("evidence"), run_id=state["run_id"], design_digest=state["design_digest"], requirement_ids=requirement_ids, test_id=integration_test_id, owner=integration_owner, tier=Tier.B, expected=expected, actual=actual, verdict=Verdict.PASS, receipt_ids=[build.receipt_id, flash.receipt_id, serial.receipt_id, protocol_receipt.receipt_id], evidence_kinds=kinds, artifacts=[audit_artifact], firmware_sha256=firmware_hash, hardware_identity_key="|".join(str(state["hardware_identity"].get(k) or "") for k in ("chip", "mac", "usb_serial", "board_profile")))
             store.write_evidence(evidence, "integration"); evidence_ids.append(evidence.evidence_id)
             # Contract rows owned by integration are independent R/DR evidence,
             # not implicit side effects of a broad integration test. Evaluate
