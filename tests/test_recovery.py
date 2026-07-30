@@ -192,6 +192,37 @@ def test_repairable_build_failure_runs_owner_patch_before_retry(tmp_path: Path):
     assert "agent-repair" in updates["receipt_ids"]
 
 
+def test_harness_change_retries_diagnostic_without_its_own_material_fingerprint(tmp_path: Path):
+    current = state(tmp_path)
+    current.update({
+        "failed_node": "integration",
+        "material_fingerprint": "before-harness-fix",
+        "failure": {
+            "category": FailureCategory.INTEGRATION.value,
+            "summary": "integration marker missing",
+            "owner": "crumb_integration",
+            "retryable": True,
+            "fingerprint": "b" * 64,
+            "evidence": [],
+        },
+        "diagnostic": Diagnostic(
+            code="INTEGRATION_EXPECTATION_FAILED",
+            cause=FailureCategory.INTEGRATION,
+            disposition=FailureDisposition.REPAIR_INTERNAL,
+            responsible_party="implementation_agent",
+            affected_owner="crumb_integration",
+            summary="integration marker missing",
+        ).model_dump(mode="json"),
+    })
+
+    with patch("orchestrator.graph.material_fingerprint", return_value="after-harness-fix"), \
+         patch("orchestrator.graph.AgentAdapter.execute") as execute:
+        updates = HarnessNodes(tmp_path).recover(current)
+
+    execute.assert_not_called()
+    assert updates["recovery_target"] == "integration"
+
+
 def test_bootstrap_subsystem_materializes_owner_before_source_gate():
     source = Path("orchestrator/graph.py").read_text(encoding="utf-8")
     bootstrap = source.split("if not rows:", 1)[1].split("for owner in owners:", 1)[1]

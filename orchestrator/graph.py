@@ -883,10 +883,19 @@ class HarnessNodes:
         # A changed Harness fingerprint is itself material retry input.  Do
         # not send a stale adapter/workspace failure to an owner agent and
         # then reject that agent for leaving firmware source unchanged.
-        harness_material_changed = bool(
+        # Node-created diagnostics predate the boundary normalizer in some
+        # revisions and therefore may not carry their own material fingerprint.
+        # The checkpoint still records the material observed at that boundary;
+        # use it as the authoritative fallback so a Harness-only correction
+        # retries the affected node instead of needlessly asking a firmware
+        # owner to change already-correct source.
+        observed_material = (
             diagnostic.material_fingerprint
-            and diagnostic.material_fingerprint
-            != material_fingerprint(project_dir, state)
+            or state.get("material_fingerprint")
+        )
+        harness_material_changed = bool(
+            observed_material
+            and observed_material != material_fingerprint(project_dir, state)
         )
         if (
             diagnostic.disposition == FailureDisposition.REPAIR_INTERNAL
