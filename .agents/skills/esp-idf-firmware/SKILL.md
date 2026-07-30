@@ -45,10 +45,10 @@ python -m orchestrator.cli design --project <project>
 
 # Sole normal design interaction, after reviewing projects/<project>/design-package/.../spec.md
 python -m orchestrator.cli resume --project <project> --approve
-
 python -m orchestrator.cli start --project <project>
 python -m orchestrator.cli resume --project <project>
 python -m orchestrator.cli status --project <project>
+python -m orchestrator.cli await-event --project <project> --after-seq <event-seq>
 python -m orchestrator.cli validate --project <project>
 
 # Maintenance/audit operations; these use Harness APIs, never hand-edit facts
@@ -68,8 +68,9 @@ python -m orchestrator.cli prepare-revision --project <project> --from-revision 
 `design` is programmatically detached from the invoking shell. It returns `DESIGN_RUNNING` with a
 project-scoped `job_id`; the worker continues through provider repair, grounding, validation, and
 atomic promotion even if the caller or conversation exits. Repeating `design` observes the same
-live job rather than launching a duplicate. Poll `status` until `WAITING_DESIGN_INPUT`,
-`WAITING_SPEC`, or `BLOCKED`.
+live job rather than launching a duplicate. Observe one `status`, then use `await-event` from its
+latest `event_seq` until a meaningful transition. Never create recurring model-driven
+`status`/`wait` loops; progress heartbeats are client-visible non-model events.
 Do not infer progress from stdout silence or manage Design worker PIDs manually.
 
 Use `--revision N` to select a non-latest revision. `WAITING_DESIGN_INPUT` is an unnumbered staged

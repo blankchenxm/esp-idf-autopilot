@@ -218,6 +218,40 @@ class DesignGroundingAdapter:
         ):
             extracted = str(inspected.get("extracted_text") or "")
             text_hash = str(inspected.get("extracted_text_sha256") or "")
+
+            def deep_read_call() -> dict[str, Any]:
+                facts = (
+                    self.deep_reader.read(
+                        self.store.project_dir.name,
+                        subsystem_id,
+                        str(record.get("part_number") or inspected.get("part_number") or ""),
+                        extracted,
+                        text_hash,
+                        requested_facts,
+                    )
+                    if requested_facts
+                    else self.deep_reader.read(
+                        self.store.project_dir.name,
+                        subsystem_id,
+                        str(record.get("part_number") or inspected.get("part_number") or ""),
+                        extracted,
+                        text_hash,
+                    )
+                )
+                return {
+                    "facts": facts,
+                    "model_usage": getattr(
+                        self.deep_reader, "last_usage",
+                        {"source": "unavailable"},
+                    ),
+                    "context_digest": getattr(
+                        self.deep_reader, "last_context_digest", None
+                    ),
+                    "context_bytes": getattr(
+                        self.deep_reader, "last_context_bytes", None
+                    ),
+                }
+
             deep_read = self._receipt(
                 "datasheet_deep_read",
                 {
@@ -231,26 +265,7 @@ class DesignGroundingAdapter:
                     # reusable across generations.
                     "repair_generation": self.run_id,
                 },
-                lambda: {
-                    "facts": (
-                        self.deep_reader.read(
-                            self.store.project_dir.name,
-                            subsystem_id,
-                            str(record.get("part_number") or inspected.get("part_number") or ""),
-                            extracted,
-                            text_hash,
-                            requested_facts,
-                        )
-                        if requested_facts
-                        else self.deep_reader.read(
-                            self.store.project_dir.name,
-                            subsystem_id,
-                            str(record.get("part_number") or inspected.get("part_number") or ""),
-                            extracted,
-                            text_hash,
-                        )
-                    )
-                },
+                deep_read_call,
                 FailureCategory.DATASHEET,
                 # A targeted readiness repair needs a fresh probabilistic
                 # response. Reusing a same-run receipt that already omitted

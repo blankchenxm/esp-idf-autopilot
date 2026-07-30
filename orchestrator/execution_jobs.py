@@ -41,10 +41,32 @@ def _read(path: Path) -> dict[str, Any]:
 
 def _write(runtime: ProjectRuntime, record: dict[str, Any]) -> None:
     path = runtime.execution_jobs / f"{record['job_id']}.json"
+    previous = _read(path)
     atomic_write_json(path, record)
     active = _read(runtime.active_execution_job)
     if not active or active.get("job_id") == record["job_id"]:
         atomic_write_json(runtime.active_execution_job, record)
+    observed = ("mode", "cursor", "phase", "next_action", "summary")
+    if any(previous.get(key) != record.get(key) for key in observed):
+        from .control_events import publish_control_event
+
+        publish_control_event(
+            runtime.repo_root,
+            runtime.project_id,
+            source="execution_job",
+            mode=str(record.get("mode") or "UNKNOWN"),
+            reason=next((
+                key for key in observed
+                if previous.get(key) != record.get(key)
+            ), "state_change"),
+            payload={
+                "job_id": record.get("job_id"),
+                "run_id": record.get("run_id"),
+                "cursor": record.get("cursor"),
+                "phase": record.get("phase"),
+                "next_action": record.get("next_action"),
+            },
+        )
 
 
 def _pid_is_alive(pid: int) -> bool:

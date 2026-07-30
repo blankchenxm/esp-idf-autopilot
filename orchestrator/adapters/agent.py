@@ -18,6 +18,10 @@ from ..contract_views import owner_contract_view
 from ..failure_context import select_owner_failure_logs
 from ..storage import atomic_write_json
 from ..runtime_paths import ProjectRuntime
+from ..model_context import (
+    build_owner_context_envelope,
+    parse_codex_jsonl_usage,
+)
 
 
 @dataclass(frozen=True)
@@ -62,34 +66,62 @@ class AgentAdapter:
             if action.project == "crumb": write_crumb_credentials(action.requirement_path, self.store.project_dir / "private" / "crumb_credentials.h")
             self._copy_source(self.store.project_dir, mirror); context.mkdir()
             contract = json.loads(action.contract_path.read_text(encoding="utf-8"))
-            atomic_write_json(context / "owner-contract.json", owner_contract_view(contract, action.owner))
+            owner_view = owner_contract_view(contract, action.owner)
+            atomic_write_json(context / "owner-contract.json", owner_view)
+            addendum: dict | None = None
             if action.implementation_addendum_path is not None:
-                shutil.copy2(
-                    action.implementation_addendum_path,
-                    context / "implementation-addendum.json",
+                addendum = json.loads(
+                    action.implementation_addendum_path.read_text(
+                        encoding="utf-8"
+                    )
                 )
-            (context / "requirements.md").write_text(redact_text(raw_requirements), encoding="utf-8")
-            shutil.copy2(action.connection_path, context / "connections.md")
-            for index, source in enumerate(select_owner_failure_logs(self.store, self.run_id, action.owner)):
-                if source.is_file(): shutil.copy2(source, context / f"failure-{index}.log")
-            prompt = f"""Implement or repair ESP-IDF subsystem {action.owner!r} for project {action.project!r}.
-Work only inside project/. Read context/owner-contract.json, context/implementation-addendum.json
-when present, requirements.md, connections.md,
-and failure logs. ESP-IDF only. Create/modify project-owned CMake, sdkconfig defaults, main orchestration,
-components/{action.owner}/ semantic API and retained selftest as required. Never create Arduino code,
-credentials, evidence, receipts, approval, design-package, managed_components, or build outputs.
-For Crumb, use project/private/crumb_credentials.h; never copy, print, summarize, or hardcode its values.
-Keep main/ orchestration-only. Follow exact contract expected values and local ESP-IDF APIs; if a fact
-is unavailable, report failure instead of guessing registers/pins/timing. When the implementation
-addendum selects a Registry component, adopt that exact namespace/version behind the owner semantic
-wrapper; custom replacement is not permitted unless a later typed repair proves an objective
-capability gap. Use addendum facts only for operations not covered by that component.
-{action.instruction}
-This is a disposable writable mirror. Do not report a permission restriction unless an actual attempted
-write fails. Materialize the requested project/component source before replying; prose alone is never a
-successful implementation result.
-When done, build is performed by the outer harness; summarize changed files and remaining blockers.
-"""
+                atomic_write_json(
+                    context / "implementation-addendum.json", addendum
+                )
+            selected_logs = tuple(dict.fromkeys((
+                *action.failure_logs,
+                *select_owner_failure_logs(
+                    self.store, self.run_id, action.owner
+                ),
+            )))
+            manifest_path = action.contract_path.parent / "manifest.json"
+            manifest = (
+                json.loads(manifest_path.read_text(encoding="utf-8"))
+                if manifest_path.is_file()
+                else {}
+            )
+            envelope = build_owner_context_envelope(
+                project=action.project,
+                run_id=self.run_id,
+                design_digest=str(
+                    manifest.get("design_digest")
+                    or owner_view["authority"]["execution_contract_sha256"]
+                ),
+                owner=action.owner,
+                reason="implementation_or_repair",
+                instruction=action.instruction,
+                contract=contract,
+                project_dir=mirror,
+                implementation_addendum=addendum,
+                failure_logs=selected_logs,
+                secret_values=secrets,
+            )
+            packet_path = context / "model-context.json"
+            atomic_write_json(packet_path, envelope)
+            context_bytes = packet_path.stat().st_size
+            persisted_packet = (
+                self.store.execution / "model-contexts" / self.run_id
+                / f"{receipt_id}.json"
+            )
+            atomic_write_json(persisted_packet, envelope)
+            prompt = """Execute the single scoped ESP-IDF task in
+context/model-context.json. Treat that digest-bound packet as the complete
+authority for this transaction. Work only inside project/ and only within its
+modification_allowlist. Do not read conversation/session history or unrelated
+owners. Never create Arduino code, credentials, evidence, receipts,
+design-package, managed_components, or build outputs. Materialize source before
+replying; prose alone is not success. The outer Harness performs build and
+verification."""
             # This process is already isolated to a disposable mirror and the
             # outer Harness whitelists what can be imported.  The nested Codex
             # client's interactive approval policy otherwise rejects its own
@@ -97,7 +129,7 @@ When done, build is performed by the outer harness; summarize changed files and 
             # implementation success with no source artifacts.
             # Keep large repair instructions off Windows' bounded command
             # line.  Codex reads ``-`` as the complete stdin prompt.
-            command = codex_command() + ["exec", "--ephemeral", "--ignore-user-config", "--dangerously-bypass-approvals-and-sandbox", "-C", str(work), "-"]
+            command = codex_command() + ["exec", "--json", "--ephemeral", "--ignore-user-config", "--dangerously-bypass-approvals-and-sandbox", "-C", str(work), "-"]
             codex_temp = work_root / "codex-tmp"
             with isolated_codex_profile(codex_temp) as profile:
                 child_env = profile.environment.copy(); child_env.pop("PYTHONPATH", None)
@@ -119,6 +151,7 @@ When done, build is performed by the outer harness; summarize changed files and 
                     time.sleep(2)
                     profile.refresh_auth()
             log_path.write_text(redact_values(output or "", secrets), encoding="utf-8")
+            model_usage = parse_codex_jsonl_usage(output or "")
             if returncode != 0:
                 failure = Failure(category=FailureCategory.TOOL, summary=(f"implementation agent timed out after {self.timeout} seconds" if returncode == -1 else f"implementation agent exited {returncode}"))
             else:
@@ -147,5 +180,10 @@ When done, build is performed by the outer harness; summarize changed files and 
             success = False; failure = Failure(category=FailureCategory.TOOL, summary=f"implementation agent failed: {type(exc).__name__}: {exc}")
         finally:
             shutil.rmtree(work, ignore_errors=True)
-        receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation="implement_or_repair", started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success, command=["codex", "exec", "disposable-mirror"], inputs={"owner": action.owner, "instruction": action.instruction}, outputs={"imported_files": imported}, artifacts=[file_ref(log_path, self.store.project_dir, "text/plain")], failure=failure)
+        artifacts = [file_ref(log_path, self.store.project_dir, "text/plain")]
+        if "persisted_packet" in locals() and persisted_packet.is_file():
+            artifacts.append(file_ref(
+                persisted_packet, self.store.project_dir, "application/json"
+            ))
+        receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation="implement_or_repair", started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success, command=["codex", "exec", "--json", "disposable-mirror"], inputs={"owner": action.owner, "context_digest": envelope.get("context_digest") if "envelope" in locals() else None}, outputs={"imported_files": imported, "model_usage": model_usage if "model_usage" in locals() else {"source": "unavailable"}, "context_bytes": context_bytes if "context_bytes" in locals() else None}, artifacts=artifacts, failure=failure)
         self.store.write_receipt(receipt, "agent"); return receipt

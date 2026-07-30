@@ -50,6 +50,18 @@ def _parser() -> argparse.ArgumentParser:
     pause = sub.add_parser("pause", help="persist an explicit user pause at the next safe graph node")
     _project_arg(pause); pause.add_argument("--revision", type=int); pause.add_argument("--reason", default="explicit user pause")
     status = sub.add_parser("status"); _project_arg(status); status.add_argument("--revision", type=int)
+    await_event = sub.add_parser(
+        "await-event",
+        help="block outside the model until a meaningful project transition",
+    )
+    _project_arg(await_event)
+    await_event.add_argument("--after-seq", type=int, default=0)
+    await_event.add_argument("--timeout", type=float)
+    await_event.add_argument(
+        "--include-progress",
+        action="store_true",
+        help="return non-model progress events as well as action-required events",
+    )
     archive = sub.add_parser("archive-runs", help="compress historical failed-run raw artifacts")
     _project_arg(archive)
     migrate = sub.add_parser("migrate-datasheets", help="deduplicate project component datasheets")
@@ -448,17 +460,48 @@ def _main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "status":
         from .execution_jobs import read_execution_job
+        from .control_events import latest_control_event_seq
 
+        event_seq = latest_control_event_seq(REPO_ROOT, project)
         execution_job = read_execution_job(REPO_ROOT, project)
         if execution_job.get("mode") == "CONTINUOUS":
-            print(json.dumps(execution_job, ensure_ascii=False, indent=2))
+            print(json.dumps(
+                {**execution_job, "event_seq": event_seq},
+                ensure_ascii=False, indent=2,
+            ))
             return 0
         path = project_dir / "execution" / "run-state.json"
         if path.exists():
-            print(path.read_text(encoding="utf-8")); return 0
+            projection = json.loads(path.read_text(encoding="utf-8"))
+            print(json.dumps(
+                {**projection, "event_seq": event_seq},
+                ensure_ascii=False, indent=2,
+            ))
+            return 0
         from .design_jobs import read_design_job
         design_job = read_design_job(REPO_ROOT, project)
-        print(json.dumps(design_job or {"status": "NOT_STARTED"}, ensure_ascii=False, indent=2)); return 0
+        print(json.dumps(
+            {**(design_job or {"status": "NOT_STARTED"}), "event_seq": event_seq},
+            ensure_ascii=False, indent=2,
+        )); return 0
+    if args.command == "await-event":
+        from .control_events import await_control_event
+
+        event = await_control_event(
+            REPO_ROOT,
+            project,
+            after_seq=args.after_seq,
+            timeout_s=args.timeout,
+            model_action_only=not args.include_progress,
+        )
+        if event is None:
+            print(json.dumps({
+                "mode": "NO_EVENT",
+                "after_seq": args.after_seq,
+            }))
+            return 3
+        print(json.dumps(event, ensure_ascii=False, indent=2))
+        return 0
     if args.command == "archive-runs":
         from .archive import archive_historical_failures
         print(json.dumps(archive_historical_failures(project_dir), ensure_ascii=False, indent=2)); return 0

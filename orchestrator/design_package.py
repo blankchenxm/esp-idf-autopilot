@@ -25,6 +25,10 @@ from .secrets import assert_no_secret_values, redact_text, secret_values
 from .design_inventory import materialize_grounding_requirements
 from .input_authority import exact_authorized_identifier
 from .input_authority import compile_input_authority
+from .model_context import (
+    build_readonly_context_envelope,
+    parse_codex_jsonl_usage,
+)
 
 
 @dataclass(frozen=True)
@@ -511,6 +515,7 @@ def _codex_design_command(work: Path, schema: Path, output: Path) -> list[str]:
     """Build a provider command without outer-session plugin/MCP initialization."""
     command = codex_command() + [
         "exec",
+        "--json",
         "--ephemeral",
         "--ignore-user-config",
         # The provider context is intentionally a disposable directory under
@@ -765,8 +770,35 @@ ERRORS (the exact fields to repair):
             # This prevents a provider mistake from deleting user project
             # state outside that context.
             command = _codex_design_command(work, schema, output)
+            authority_files = [
+                path for path in work.rglob("*")
+                if path.is_file()
+                and path.name not in {
+                    "model-context.json",
+                    "provider-prompt.txt",
+                }
+            ]
+            envelope = build_readonly_context_envelope(
+                project=project,
+                reason=(
+                    "design_structural_repair"
+                    if self.repair_draft is not None
+                    else "design_synthesis"
+                ),
+                instruction=instruction,
+                workspace=work,
+                authority_files=authority_files,
+                secret_values=secrets,
+            )
+            context_path = work / "model-context.json"
+            atomic_write_json(context_path, envelope)
             prompt_path = work / "provider-prompt.txt"
-            prompt_path.write_text(instruction, encoding="utf-8")
+            prompt_path.write_text(
+                "Read model-context.json and every authority file it names. "
+                "Perform exactly that read-only Design task and return only "
+                "the schema-conforming result.\n",
+                encoding="utf-8",
+            )
             for auth_attempt in range(2):
                 with prompt_path.open("r", encoding="utf-8") as prompt_handle:
                     process = subprocess.Popen(
@@ -794,7 +826,21 @@ ERRORS (the exact fields to repair):
                             f"Codex design provider timed out after {self.timeout} seconds: {partial[-2000:]}"
                         ) from exc
                 if process.returncode == 0:
-                    return _decode_codex_design_output(json.loads(output.read_text(encoding="utf-8")))
+                    decoded = _decode_codex_design_output(
+                        json.loads(output.read_text(encoding="utf-8"))
+                    )
+                    usage = parse_codex_jsonl_usage(provider_output)
+                    return DesignDraft(
+                        spec_markdown=decoded.spec_markdown,
+                        execution_contract=decoded.execution_contract,
+                        providers=decoded.providers + [{
+                            "kind": "design_model_transaction",
+                            "context_digest": envelope["context_digest"],
+                            "context_bytes": context_path.stat().st_size,
+                            "model_usage": usage,
+                        }],
+                        blocking_unknowns=decoded.blocking_unknowns,
+                    )
                 if auth_attempt == 0 and is_authentication_failure(provider_output):
                     # Cockpit updates ~/.codex/auth.json for the next account.
                     # Give that atomic switch a moment, then launch a fresh
