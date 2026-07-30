@@ -482,6 +482,11 @@ class HarnessNodes:
             owner = str(subsystem.get("id") or "")
             if owners is not None and owner not in owners:
                 continue
+            # Product integration/orchestration has no external component
+            # selection to bind. Its source remains checked directly against
+            # the contract, but it must not be forced to invent an addendum.
+            if subsystem.get("execution_role") == "integration":
+                continue
             required = required_operations_for_subsystem(contract, subsystem)
             if not required:
                 continue
