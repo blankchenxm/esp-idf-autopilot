@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .storage import atomic_write_json, file_ref
+from .secrets import redact_text
 
 
 _PART = re.compile(r"\b[A-Z][A-Z0-9-]*\d[A-Z0-9-]*\b", re.IGNORECASE)
@@ -17,6 +18,30 @@ _SECRET = re.compile(r"(?i)\b(?:wifi\s*)?(?:password|passwd|token|api[_ -]?key)\
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def semantic_input_bytes(area: str, raw: bytes) -> bytes:
+    """Return the design-authoritative bytes for one user input.
+
+    Credentials provision firmware at build time, but are not product/design
+    decisions.  Bind the surrounding requirements text exactly while replacing
+    only recognised secret values with a stable marker.  Connections never
+    carry an approved secret exception and therefore remain byte-exact.
+    """
+    if area != "requirements":
+        return raw
+    return redact_text(raw.decode("utf-8")).encode("utf-8")
+
+
+def semantic_input_ref(path: Path, base: Path, area: str) -> dict[str, Any]:
+    raw = path.read_bytes()
+    semantic = semantic_input_bytes(area, raw)
+    return {
+        "path": path.resolve().relative_to(base.resolve()).as_posix(),
+        "sha256": _sha256(semantic),
+        "size": len(semantic),
+        "media_type": "text/markdown",
+    }
 
 
 def compile_input_authority(repo_root: Path, project: str) -> dict[str, Any]:
@@ -31,9 +56,12 @@ def compile_input_authority(repo_root: Path, project: str) -> dict[str, Any]:
     for area in ("requirements", "connections"):
         path = repo_root / area / f"{project}.md"
         raw = path.read_bytes()
-        text = raw.decode("utf-8")
+        # Do not let a credential value become an identifier, protocol, or
+        # source offset in design authority.  The redacted representation is
+        # stable across routine credential rotation.
+        text = semantic_input_bytes(area, raw).decode("utf-8")
         text_by_area[area] = text
-        sources.append({**file_ref(path, repo_root, "text/markdown").model_dump(), "sha256": _sha256(raw)})
+        sources.append(semantic_input_ref(path, repo_root, area))
 
     identifiers: list[dict[str, Any]] = []
     pins: list[dict[str, Any]] = []

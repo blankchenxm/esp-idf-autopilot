@@ -71,6 +71,25 @@ def test_input_hash_change_invalidates_package(tmp_path: Path):
     assert any("hash/size mismatch" in error for error in validate_design_package(design)[1])
 
 
+def test_secret_only_requirement_change_keeps_new_package_valid(tmp_path: Path):
+    design = package(tmp_path)
+    requirement = tmp_path / "requirements" / "fixture.md"
+    requirement.write_text("wifi password: first\n", encoding="utf-8")
+    from orchestrator.design_package import _input_refs
+    manifest = json.loads((design / "manifest.json").read_text(encoding="utf-8"))
+    manifest["inputs"] = _input_refs(tmp_path, "fixture")
+    manifest["design_digest"] = design_digest(
+        json.loads((design / "execution-contract.json").read_text(encoding="utf-8")), manifest
+    )
+    atomic_write_json(design / "manifest.json", manifest)
+    for name in ("approval.json", "design-validation.json"):
+        value = json.loads((design / name).read_text(encoding="utf-8"))
+        value["design_digest"] = manifest["design_digest"]
+        atomic_write_json(design / name, value)
+    requirement.write_text("wifi password: second\n", encoding="utf-8")
+    assert validate_design_package(design, require_approval=True)[1] == []
+
+
 def test_dependency_cycle_is_rejected():
     value = valid_contract(); value["subsystems"].append({"id": "consumer", "dependencies": ["probe"], "classification": "reusable_software", "registry_search_required": True}); value["subsystems"][0]["dependencies"] = ["consumer"]
     assert any("cycle" in error for error in validate_contract(value))

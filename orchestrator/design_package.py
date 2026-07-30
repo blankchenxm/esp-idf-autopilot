@@ -909,12 +909,14 @@ ERRORS:
 
 
 def _input_refs(repo_root: Path, project: str) -> list[dict[str, Any]]:
+    from .input_authority import semantic_input_ref
+
     refs = []
     for area in ("requirements", "connections"):
         path = repo_root / area / f"{project}.md"
         if not path.is_file():
             raise FileNotFoundError(f"required user input is missing: {path}")
-        refs.append(file_ref(path, repo_root, "text/markdown").model_dump())
+        refs.append(semantic_input_ref(path, repo_root, area))
     return refs
 
 

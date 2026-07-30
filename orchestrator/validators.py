@@ -565,8 +565,20 @@ def validate_design_package(design_dir: Path, require_approval: bool = True) -> 
             except ValueError:
                 errors.append(f"manifest {section} path escapes authority root: {path}"); continue
             if not path.is_file(): errors.append(f"manifest {section} file missing: {path}"); continue
-            current = hashlib.sha256(path.read_bytes()).hexdigest()
-            if current != reference.get("sha256") or path.stat().st_size != reference.get("size"):
+            raw = path.read_bytes()
+            if section == "inputs" and reference.get("path") == f"requirements/{project_id}.md":
+                from .input_authority import semantic_input_bytes
+                current_bytes = semantic_input_bytes("requirements", raw)
+            else:
+                current_bytes = raw
+            current = hashlib.sha256(current_bytes).hexdigest()
+            if current != reference.get("sha256") or len(current_bytes) != reference.get("size"):
+                # Legacy revisions bound the raw requirements file.  They can
+                # continue only after an explicit, secret-free rotation receipt
+                # proves the current public authority is unchanged.
+                from .credential_rotation import rotation_allows_input
+                if section == "inputs" and rotation_allows_input(design_dir, reference, raw):
+                    continue
                 errors.append(f"manifest {section} hash/size mismatch: {path}")
     expected = design_digest(contract, manifest)
     provider_ids: set[str] = set()

@@ -46,6 +46,7 @@ def _parser() -> argparse.ArgumentParser:
     resume = sub.add_parser("resume"); _project_arg(resume); _runtime_args(resume)
     resume.add_argument("--approve", action="store_true")
     resume.add_argument("--tier-c-json")
+    rotate = sub.add_parser("rotate-credentials"); _project_arg(rotate); rotate.add_argument("--revision", type=int); rotate.add_argument("--approve", action="store_true")
     pause = sub.add_parser("pause", help="persist an explicit user pause at the next safe graph node")
     _project_arg(pause); pause.add_argument("--revision", type=int); pause.add_argument("--reason", default="explicit user pause")
     status = sub.add_parser("status"); _project_arg(status); status.add_argument("--revision", type=int)
@@ -411,6 +412,13 @@ def _main(argv: list[str] | None = None) -> int:
     if args.command == "prepare-revision":
         from .design_package import create_revision
         print(create_revision(REPO_ROOT, project, args.from_revision, args.to_revision)); return 0
+    if args.command == "rotate-credentials":
+        if not args.approve:
+            raise ValueError("credential rotation requires explicit --approve")
+        from .credential_rotation import authorize_credential_rotation
+        design_dir, _ = _design_dir(project_dir, args.revision)
+        print(json.dumps(authorize_credential_rotation(REPO_ROOT, project, design_dir), ensure_ascii=False, indent=2))
+        return 0
     if args.command == "status":
         from .execution_jobs import read_execution_job
 
