@@ -69,6 +69,12 @@ def test_v12_tier_c_accepts_only_supported_artifact_path_templates():
     assert any("unsupported template fields" in error for error in validate_contract(contract))
 
 
+def test_missing_physical_tier_c_artifact_is_a_user_gate_not_owner_repair():
+    source = Path("orchestrator/graph.py").read_text(encoding="utf-8")
+    assert "TIER_C_ARTIFACT_AWAITING_PHYSICAL_CAPTURE" in source
+    assert "FailureDisposition.HARD_EXTERNAL_BLOCKER" in source
+
+
 def test_confirmation_must_bind_presented_artifact_hash(tmp_path: Path):
     project = tmp_path / "projects" / "demo"; design = project / "design-package" / "rev-0001"
     design.mkdir(parents=True)

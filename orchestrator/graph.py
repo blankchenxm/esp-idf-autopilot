@@ -1819,6 +1819,32 @@ class HarnessNodes:
             artifact_receipt, metadata = TierCArtifactAdapter(project_dir, store, state["run_id"]).materialize(item)
             receipt_ids.append(artifact_receipt.receipt_id)
             if not artifact_receipt.success:
+                contract = item.get("artifact_contract", {})
+                if (
+                    contract.get("access_method") == "local_file"
+                    and (artifact_receipt.failure is not None)
+                    and "local artifact is missing" in artifact_receipt.failure.summary
+                ):
+                    source = str(contract.get("source", "")).format(
+                        run_id=state["run_id"], item_id=item["id"]
+                    )
+                    raise DiagnosticFailure(Diagnostic(
+                        code="TIER_C_ARTIFACT_AWAITING_PHYSICAL_CAPTURE",
+                        cause=FailureCategory.INTEGRATION,
+                        disposition=FailureDisposition.HARD_EXTERNAL_BLOCKER,
+                        responsible_party="user",
+                        affected_owner=item.get("owner"),
+                        test_id=item.get("test_id", item["id"]),
+                        summary=(
+                            f"Tier C physical artifact is not available: {source}"
+                        ),
+                        evidence=artifact_receipt.artifacts,
+                        retry_scope="tier_c_artifact_materialization",
+                        user_action_required=(
+                            "perform the approved physical capture and place its "
+                            f"artifact at {source}; then resume this run"
+                        ),
+                    ))
                 raise ReceiptFailure(artifact_receipt)
             tier_c_artifacts[item["id"]] = metadata
             tier_c_artifact_receipts[item["id"]] = artifact_receipt.receipt_id
