@@ -273,7 +273,34 @@ def _run(project: str, revision: int, intent: str, port: str | None, baud: int, 
             graph = build_graph(REPO_ROOT, saver)
             snapshot = graph.get_state(config)
             value = _resume_input(snapshot, initial, resume_value, Command, project_dir)
-            if value is None and (bool(snapshot.tasks and any(getattr(task, "interrupts", ()) for task in snapshot.tasks)) or (snapshot.values and not snapshot.next)):
+            reenter_recovery = (
+                bool(snapshot.values)
+                and not snapshot.next
+                and not snapshot.tasks
+                and bool(snapshot.values.get("recovery_target") or snapshot.values.get("failed_node"))
+            )
+            if value is not None and snapshot.values and snapshot.values.get("mode") in {"BLOCKED", "FAULTED"}:
+                # A completed LangGraph run has no pending task.  ``Command``
+                # cannot revive it by itself, so use the graph state API to
+                # re-enter the existing recovery boundary; that boundary's
+                # deterministic route schedules the original failed node.
+                graph.update_state(config, value.update, as_node="recover")
+                result = graph.invoke(None, config)
+            elif reenter_recovery:
+                from .policies import material_fingerprint
+                target = snapshot.values.get("recovery_target") or snapshot.values.get("failed_node")
+                current = material_fingerprint(project_dir, dict(snapshot.values))
+                updates = {
+                    "mode": "CONTINUOUS", "failure": None,
+                    "diagnostic": None, "blocker": None,
+                    "cursor": f"RETRY:{target}:resume-repair",
+                    "next_action": f"retry {target} after material change",
+                    "material_fingerprint": current,
+                    "progress_seq": snapshot.values.get("progress_seq", 0) + 1,
+                }
+                graph.update_state(config, updates, as_node="recover")
+                result = graph.invoke(None, config)
+            elif value is None and (bool(snapshot.tasks and any(getattr(task, "interrupts", ()) for task in snapshot.tasks)) or (snapshot.values and not snapshot.next)):
                 result = dict(snapshot.values)
             else:
                 result = graph.invoke(value, config)
