@@ -109,6 +109,23 @@ manifests and shows every project consuming each shared object.
 
 ## Design facts, operation intent, and product decisions
 
+## Production runtime-flow contract (schema 1.6)
+
+Schema 1.6 makes normal runtime composition a deterministic design artifact,
+not an implementation prompt. `architecture.runtime_flow` declares the one
+system-orchestration entrypoint plus ordered owner operations, requirement
+coverage, product symbols, source assertions, and dependencies. Every R/DR
+must be covered and every integration test must name the runtime-flow steps
+that cover its requirements. A selftest-only symbol or parallel simulation is
+not a valid production step. Execution validates these source assertions before
+component verification, integration, closure, and release.
+
+For a custom driver, selected `covered_operations` records intended scope only.
+It is never readiness evidence. Hardware-facing initialization and recovery
+require receipt-bound targeted facts; only explicitly classified host-side
+logic may use a versioned local-IDF default. This prevents a `NOT_SUPPORTED`
+stub from satisfying a design promise.
+
 Schema 1.3 separates facts the Harness must acquire from choices the product
 owner must make. Design freezes L0/L1 identity, interface, electrical, safety,
 acceptance facts and each owner's `required_operations`; it does not require a

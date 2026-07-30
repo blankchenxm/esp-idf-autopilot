@@ -15,7 +15,11 @@ HIGH_RISK_OPERATIONS = frozenset({
 })
 AUTHORITATIVE_SOURCE_KINDS = frozenset({"datasheet", "registry", "local_idf"})
 DEFAULT_CUSTOM_SOFTWARE_OPERATIONS = frozenset({
-    "initialize", "detect_sample_loss", "reset_recovery",
+    # Driver init and recovery select hardware-facing transport/register
+    # behaviour, so neither may inherit a generic software default.  Loss
+    # accounting is the one host-side operation that remains defaultable once
+    # its capture operation is fact-bound.
+    "detect_sample_loss",
 })
 DEFAULT_CUSTOM_SOFTWARE_POLICY = {
     "policy_id": "esp_idf_host_lifecycle",
@@ -46,6 +50,13 @@ def assess_implementation_readiness(
     required = list(dict.fromkeys(str(item) for item in required_operations if item))
     selection = selection or {}
     declared_coverage = set(selection.get("covered_operations", []))
+    # A custom-driver selection is an implementation choice, not proof that
+    # its hardware operations work.  Proposed coverage previously allowed a
+    # deliberate NOT_SUPPORTED stub to pass readiness without targeted facts.
+    # Registry and local-IDF selections retain receipt-backed API coverage;
+    # custom operations must pass through the fact/readiness path below.
+    if selection.get("decision") == "custom":
+        declared_coverage.clear()
     # MCU-native owners use the installed ESP-IDF API surface, which is
     # grounded by a local_idf selection receipt rather than a component
     # Registry record or an external-part datasheet.  Treat that receipt as

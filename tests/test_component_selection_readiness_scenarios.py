@@ -135,7 +135,7 @@ def test_readiness_adopted_component_reads_only_capability_gap():
     ]
 
 
-def test_readiness_custom_driver_defaults_host_lifecycle_after_hardware_grounding():
+def test_readiness_custom_driver_requires_facts_for_hardware_lifecycle():
     result = assess_implementation_readiness(
         owner="rare_chip",
         required_operations=["identify", "read", "reset_recovery"],
@@ -154,8 +154,8 @@ def test_readiness_custom_driver_defaults_host_lifecycle_after_hardware_groundin
         ],
     )
 
-    assert result.ready is True
-    assert result.missing_facts == []
+    assert result.ready is False
+    assert result.missing_facts == ["reset_recovery"]
     assert result.operation_authorities == [
         {
             "operation": "identify", "kind": "hardware_fact",
@@ -165,11 +165,22 @@ def test_readiness_custom_driver_defaults_host_lifecycle_after_hardware_groundin
             "operation": "read", "kind": "hardware_fact",
             "source_kind": "datasheet", "provider_receipt_id": "receipt-read",
         },
-        {
-            "operation": "reset_recovery", "kind": "local_idf_default",
-            "policy_id": "esp_idf_host_lifecycle", "policy_version": "1",
-        },
     ]
+
+
+def test_custom_driver_declared_coverage_cannot_bypass_targeted_operation_facts():
+    result = assess_implementation_readiness(
+        owner="microphone",
+        required_operations=["initialize", "capture_stereo"],
+        selection={
+            "decision": "custom",
+            "covered_operations": ["initialize", "capture_stereo"],
+        },
+        existing_facts=[],
+    )
+
+    assert result.ready is False
+    assert result.missing_facts == ["initialize", "capture_stereo"]
 
 
 def test_high_risk_operation_requires_authoritative_source_even_if_fact_exists():

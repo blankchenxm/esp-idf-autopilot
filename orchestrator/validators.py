@@ -115,6 +115,100 @@ def topological_subsystems(subsystems: list[dict[str, Any]]) -> list[str]:
     return order
 
 
+def _validate_runtime_flow(contract: dict[str, Any]) -> list[str]:
+    """Validate the design-time, production-only component composition.
+
+    Component verification establishes local behaviour.  This flow is the
+    separate authority that proves every requirement is intentionally wired
+    into the normal runtime and that integration tests exercise that same
+    path, rather than a parallel selftest-only implementation.
+    """
+    errors: list[str] = []
+    flow = contract.get("architecture", {}).get("runtime_flow")
+    if not isinstance(flow, dict):
+        return ["architecture.runtime_flow is required for schema 1.6"]
+    definitions = {
+        str(item.get("id")): item
+        for item in contract.get("subsystems", []) if isinstance(item, dict)
+    }
+    requirements = {str(item.get("id")) for item in contract.get("requirements", [])}
+    entrypoint = flow.get("entrypoint")
+    if not isinstance(entrypoint, dict):
+        return ["architecture.runtime_flow.entrypoint must be an object"]
+    entry_owner = str(entrypoint.get("owner") or "")
+    if entry_owner not in definitions:
+        errors.append("architecture.runtime_flow.entrypoint has an unknown owner")
+    elif definitions[entry_owner].get("responsibility_layer") != "system_orchestration":
+        errors.append("architecture.runtime_flow.entrypoint owner must be system_orchestration")
+    if not str(entrypoint.get("symbol") or ""):
+        errors.append("architecture.runtime_flow.entrypoint lacks symbol")
+    steps = flow.get("steps")
+    if not isinstance(steps, list) or not steps:
+        return errors + ["architecture.runtime_flow requires at least one step"]
+    step_ids: set[str] = set(); covered_requirements: set[str] = set()
+    dependencies: dict[str, set[str]] = {}
+    for step in steps:
+        if not isinstance(step, dict):
+            errors.append("architecture.runtime_flow contains a non-object step")
+            continue
+        step_id = str(step.get("id") or "")
+        owner = str(step.get("owner") or "")
+        operation = str(step.get("operation") or "")
+        if not step_id or step_id in step_ids:
+            errors.append(f"architecture.runtime_flow has invalid or duplicate step id: {step_id!r}")
+            continue
+        step_ids.add(step_id); dependencies[step_id] = set(step.get("after") or [])
+        if owner not in definitions:
+            errors.append(f"runtime-flow step {step_id!r} has unknown owner {owner!r}")
+        elif operation not in set(definitions[owner].get("required_operations") or []):
+            errors.append(f"runtime-flow step {step_id!r} operation {operation!r} is not declared by {owner!r}")
+        if not str(step.get("symbol") or ""):
+            errors.append(f"runtime-flow step {step_id!r} lacks a production symbol")
+        requirement_ids = set(str(item) for item in step.get("requirement_ids") or [])
+        unknown = requirement_ids - requirements
+        if unknown:
+            errors.append(f"runtime-flow step {step_id!r} names unknown requirements {sorted(unknown)}")
+        covered_requirements.update(requirement_ids)
+        assertions = step.get("source_assertions")
+        if not isinstance(assertions, list) or not assertions:
+            errors.append(f"runtime-flow step {step_id!r} lacks source_assertions")
+    unknown_dependencies = {
+        dependency for values in dependencies.values() for dependency in values
+        if dependency not in step_ids
+    }
+    if unknown_dependencies:
+        errors.append(f"runtime-flow references unknown preceding steps {sorted(unknown_dependencies)}")
+    else:
+        try:
+            topological_subsystems([
+                {"id": step_id, "dependencies": sorted(values)}
+                for step_id, values in dependencies.items()
+            ])
+        except ValueError as exc:
+            errors.append(f"runtime-flow {exc}")
+    missing = requirements - covered_requirements
+    if missing:
+        errors.append(f"runtime-flow does not cover requirements {sorted(missing)}")
+    for test in contract.get("integration", {}).get("tests", []):
+        if not isinstance(test, dict):
+            continue
+        selected = set(str(item) for item in test.get("runtime_step_ids") or [])
+        if not selected:
+            errors.append(f"integration test {test.get('id')!r} lacks runtime_step_ids")
+            continue
+        unknown = selected - step_ids
+        if unknown:
+            errors.append(f"integration test {test.get('id')!r} names unknown runtime steps {sorted(unknown)}")
+        test_requirements = set(str(item) for item in test.get("requirement_ids") or [])
+        exercised = set().union(*(
+            set(str(item) for item in step.get("requirement_ids") or [])
+            for step in steps if str(step.get("id")) in selected
+        ))
+        if not test_requirements.issubset(exercised):
+            errors.append(f"integration test {test.get('id')!r} runtime steps do not cover its requirements")
+    return errors
+
+
 def validate_contract(
     contract: dict[str, Any], input_authority: dict[str, Any] | None = None,
 ) -> list[str]:
@@ -139,14 +233,17 @@ def validate_contract(
     integration_ids = {item_id for item_id, role in subsystem_roles.items() if role == "integration"}
     if len(integration_ids) > 1:
         errors.append("contract may declare at most one integration subsystem")
-    strict_contract = contract.get("schema_version") in {"1.1", "1.2", "1.3", "1.4", "1.5"}
+    strict_contract = contract.get("schema_version") in {"1.1", "1.2", "1.3", "1.4", "1.5", "1.6"}
     # Schema 1.5 extends 1.3; it must retain the 1.2+ execution ordering
     # (integration before Tier C), not fall back to the legacy 1.0 order.
-    strict_v12 = contract.get("schema_version") in {"1.2", "1.3", "1.4", "1.5"}
-    strict_v13 = contract.get("schema_version") in {"1.3", "1.4", "1.5"}
-    strict_v15 = contract.get("schema_version") == "1.5"
+    strict_v12 = contract.get("schema_version") in {"1.2", "1.3", "1.4", "1.5", "1.6"}
+    strict_v13 = contract.get("schema_version") in {"1.3", "1.4", "1.5", "1.6"}
+    strict_v15 = contract.get("schema_version") in {"1.5", "1.6"}
+    strict_v16 = contract.get("schema_version") == "1.6"
     if strict_v13:
         errors.extend(_unresolved_approval_paths(contract))
+    if strict_v16:
+        errors.extend(_validate_runtime_flow(contract))
     if strict_contract:
         for item in contract["subsystems"]:
             if "execution_role" not in item:

@@ -606,6 +606,12 @@ subsystem; create a dependency DAG; assign every R/DR owner and verification row
 expected marker/value/range/count/duration/tolerance and evidence. Freeze FreeRTOS ownership.
 Every subsystem must declare execution_role: component for an independently brought-up component,
 or integration for the one final cross-component integration node. Never infer a role from a name.
+For schema 1.6, architecture.runtime_flow is mandatory. It is the production (selftest-off)
+execution graph, not a test description: declare one system_orchestration entrypoint symbol and
+ordered steps. Each step names its owner, one owner required_operation, product symbol,
+requirement_ids, optional preceding steps, and source_assertions. Every R/DR must appear in at
+least one step. Every integration test must declare runtime_step_ids that cover all of its
+requirement_ids. A component selftest or a simulation-only helper is never a runtime-flow step.
 Every external_part subsystem must declare its exact manufacturer part_number. This field is
 mandatory even when no Registry component or Datasheet source is known; the Harness derives its
 grounding plan from this inventory and performs acquisition itself.
@@ -628,7 +634,7 @@ serial_log, firmware_hash, and hardware_identity. Do not require artifact or
 protocol_receipt for Tier A/B: those runtime transactions are unavailable outside
 the declared Tier C artifact flow. A WAV selftest is therefore a serial/readback
 observation, not an artifact-evidence request.
-Set schema_version to "1.5". Every Tier A/B verification row must declare an executable
+Set schema_version to "1.6". Every Tier A/B verification row must declare an executable
 test_setup and stimulus. Use normal_boot + none for normal boot evidence. If markers require a
 firmware selftest, declare firmware_selftest with isolated_build=true, explicit
 kconfig_overrides, and firmware_simulation; the runner builds, flashes, and captures that image

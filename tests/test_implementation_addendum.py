@@ -99,7 +99,7 @@ def test_addendum_digest_detects_tampering(tmp_path: Path):
     )
 
 
-def test_addendum_binds_default_host_lifecycle_to_local_idf_receipt():
+def test_addendum_rejects_default_hardware_lifecycle_for_custom_driver():
     addendum = build_implementation_addendum(
         design_digest="a" * 64,
         owner="sensor",
@@ -130,9 +130,11 @@ def test_addendum_binds_default_host_lifecycle_to_local_idf_receipt():
         ],
     )
 
-    assert validate_implementation_addendum(
+    errors = validate_implementation_addendum(
         addendum, design_digest="a" * 64, owner="sensor"
-    ) == []
+    )
+    assert "default authority is not permitted for operation: initialize" in errors
+    assert "default authority is not permitted for operation: reset_recovery" in errors
 
 
 def test_addendum_rejects_default_authority_for_high_risk_operation():

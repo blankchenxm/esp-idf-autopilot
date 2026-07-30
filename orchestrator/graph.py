@@ -21,7 +21,7 @@ from .models import ArtifactRef, Blocker, Closure, Diagnostic, DiagnosticSeverit
 from .errors import DiagnosticFailure, ReceiptFailure
 from .policies import classify_failure, disposition_for, failure_fingerprint, material_fingerprint, progress_fingerprint, recovery_budget
 from .evaluation import evaluate_text
-from .contract_consistency import validate_source_facts
+from .contract_consistency import validate_runtime_flow_source, validate_source_facts
 from .implementation_reuse import assess_existing_implementation
 from .state import HarnessState
 from .storage import ProjectStore, atomic_write_json, digest, file_ref
@@ -1265,7 +1265,9 @@ class HarnessNodes:
         addenda, addendum_errors = self._validated_implementation_addenda(
             state, set(owners)
         )
-        source_errors = addendum_errors + validate_source_facts(
+        source_errors = addendum_errors + validate_runtime_flow_source(
+            project_dir, contract
+        ) + validate_source_facts(
             project_dir,
             contract,
             set(owners),
@@ -1622,7 +1624,9 @@ class HarnessNodes:
             state, project_dir, store, integration_owner
         )
         addenda, addendum_errors = self._validated_implementation_addenda(state)
-        source_errors = addendum_errors + validate_source_facts(
+        source_errors = addendum_errors + validate_runtime_flow_source(
+            Path(state["project_dir"]), contract
+        ) + validate_source_facts(
             project_dir,
             contract,
             additional_facts=[
@@ -1856,9 +1860,11 @@ class HarnessNodes:
         covered: set[str] = set()
         tier_c_pass: set[str] = set()
         passed_tests: set[str] = set()
-        _, store = self._context(state)
+        project_dir, store = self._context(state)
         addenda, addendum_errors = self._validated_implementation_addenda(state)
-        source_errors = addendum_errors + validate_source_facts(
+        source_errors = addendum_errors + validate_runtime_flow_source(
+            project_dir, contract
+        ) + validate_source_facts(
             Path(state["project_dir"]),
             contract,
             additional_facts=[
@@ -1961,7 +1967,9 @@ class HarnessNodes:
     def release(self, state: HarnessState) -> dict:
         project_dir, store = self._context(state); contract = self._contract(state)
         addenda, addendum_errors = self._validated_implementation_addenda(state)
-        source_errors = addendum_errors + validate_source_facts(
+        source_errors = addendum_errors + validate_runtime_flow_source(
+            project_dir, contract
+        ) + validate_source_facts(
             project_dir,
             contract,
             additional_facts=[

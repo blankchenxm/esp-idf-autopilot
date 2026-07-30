@@ -50,6 +50,42 @@ def valid_v15_contract(project: str = "fixture") -> dict:
     return value
 
 
+def valid_v16_contract(project: str = "fixture") -> dict:
+    value = valid_v15_contract(project)
+    value["schema_version"] = "1.6"
+    value["subsystems"][0]["required_operations"] = ["start"]
+    value["verification"][0].update({
+        "test_setup": {"kind": "normal_boot"},
+        "stimulus": {"kind": "none"},
+    })
+    value["architecture"]["runtime_flow"] = {
+        "id": "production",
+        "entrypoint": {"owner": "probe", "symbol": "probe_start"},
+        "steps": [{
+            "id": "ready", "owner": "probe", "operation": "start",
+            "symbol": "probe_start", "requirement_ids": ["R1"],
+            "source_assertions": [{
+                "path_glob": "main/**/*.c", "required_tokens": ["probe_start"],
+            }],
+        }],
+    }
+    value["integration"]["tests"][0]["runtime_step_ids"] = ["ready"]
+    return value
+
+
+def test_v16_requires_production_runtime_flow_for_every_requirement():
+    value = valid_v16_contract()
+    assert validate_contract(value) == []
+    value["architecture"]["runtime_flow"]["steps"][0]["requirement_ids"] = []
+    assert any("does not cover requirements" in error for error in validate_contract(value))
+
+
+def test_v16_rejects_integration_that_bypasses_its_runtime_flow():
+    value = valid_v16_contract()
+    value["integration"]["tests"][0]["runtime_step_ids"] = []
+    assert any("lacks runtime_step_ids" in error for error in validate_contract(value))
+
+
 def package(tmp_path: Path) -> Path:
     root = tmp_path; project = "fixture"; design = root / "projects" / project / "design-package" / "rev-0001"; design.mkdir(parents=True)
     for area in ("requirements", "connections"):
