@@ -66,8 +66,8 @@ class HarnessNodes:
         for path in (project_dir / "components").glob("*/Kconfig"):
             text = path.read_text(encoding="utf-8", errors="ignore")
             declared.update(
-                prefix + match.group(1)
-                for match in re.finditer(r"(?m)^\s*config\s+([A-Z0-9_]+)\s*$", text)
+                "CONFIG_" + match.group(1)
+                for match in re.finditer(r"(?m)^\s*config\s+([A-Z0-9_]+)\b", text)
             )
         return sorted(requested - declared)
 
