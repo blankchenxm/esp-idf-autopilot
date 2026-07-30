@@ -178,9 +178,23 @@ class HarnessNodes:
             project_dir, owner, self._contract(state), addendum_facts
         )
         if not repaired.reusable:
-            raise ValueError(
-                f"owner {owner!r} remains ineligible for reuse: {repaired.reasons}"
-            )
+            # A successful agent process is not proof that it closed every
+            # deterministic reuse assertion.  Keep this an owner-directed
+            # repair (rather than degrading it to an unknown Harness fault),
+            # so a later material change retries the same checkpoint.
+            raise DiagnosticFailure(Diagnostic(
+                code="IMPLEMENTATION_REUSE_REPAIR_INCOMPLETE",
+                cause=FailureCategory.API,
+                disposition=FailureDisposition.REPAIR_INTERNAL,
+                responsible_party="implementation_agent",
+                affected_owner=owner,
+                subsystem_id=owner,
+                summary=(
+                    f"owner {owner!r} remains ineligible for reuse: "
+                    f"{repaired.reasons}"
+                ),
+                retry_scope="owner_and_consumers",
+            ))
         self._event(state, "implementation_reuse", {
             "owner": owner,
             "decision": "repaired",
