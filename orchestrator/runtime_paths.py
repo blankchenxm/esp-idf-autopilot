@@ -66,6 +66,10 @@ class ProjectRuntime:
         return self.root / "control-event-sequence.json"
 
     @property
+    def worker_reconciliations(self) -> Path:
+        return self.root / "worker-reconciliations"
+
+    @property
     def active_execution_job(self) -> Path:
         return self.root / "active-execution-job.json"
 
@@ -93,6 +97,7 @@ class ProjectRuntime:
             self.design_jobs,
             self.execution_jobs,
             self.control_events,
+            self.worker_reconciliations,
             self.locks,
         ):
             path.mkdir(parents=True, exist_ok=True)

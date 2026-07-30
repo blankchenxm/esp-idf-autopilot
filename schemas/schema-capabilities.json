@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "current_executable_schema": "1.7",
+  "capabilities": {
+    "1.0": [],
+    "1.1": ["evidence_contract"],
+    "1.2": ["evidence_contract", "verification_batch"],
+    "1.3": ["evidence_contract", "verification_batch", "implementation_facts"],
+    "1.4": ["evidence_contract", "verification_batch", "implementation_facts", "input_authority"],
+    "1.5": ["evidence_contract", "verification_batch", "implementation_facts", "input_authority", "typed_test_setup"],
+    "1.6": ["evidence_contract", "verification_batch", "implementation_facts", "input_authority", "typed_test_setup", "runtime_flow"],
+    "1.7": ["evidence_contract", "verification_batch", "implementation_facts", "input_authority", "typed_test_setup", "runtime_flow", "typed_operations", "tier_c_producer", "component_architecture", "production_scenarios", "transaction_graph", "lineage_recovery", "clean_release"]
+  },
+  "release_required": [
+    "evidence_contract",
+    "verification_batch",
+    "implementation_facts",
+    "input_authority",
+    "typed_test_setup",
+    "runtime_flow",
+    "typed_operations",
+    "tier_c_producer",
+    "component_architecture",
+    "production_scenarios",
+    "transaction_graph",
+    "lineage_recovery",
+    "clean_release"
+  ]
+}

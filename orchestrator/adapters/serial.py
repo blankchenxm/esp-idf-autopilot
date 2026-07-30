@@ -15,6 +15,7 @@ from mcp.client.stdio import stdio_client
 from ..models import Failure, FailureCategory, Receipt
 from ..codex_runner import background_creationflags, hidden_powershell_command, hidden_startupinfo
 from ..storage import ProjectStore, file_ref
+from ..transactions import idempotency_authority
 
 
 _FIRMWARE_ERROR_OWNER = re.compile(r"^E\s+\(\d+\)\s+([A-Za-z][A-Za-z0-9_]*):", re.MULTILINE)
@@ -116,11 +117,12 @@ class SerialAdapter:
         timeout: float,
         marker: str | None = None,
         *,
+        operation: str = "serial_boot_capture",
         idempotency_key: str | None = None,
     ) -> Receipt:
         if idempotency_key and (
             cached := self.store.find_successful_receipt(
-                "serial_boot_capture", idempotency_key
+                operation, idempotency_key
             )
         ):
             return cached
@@ -172,5 +174,5 @@ class SerialAdapter:
                 category=FailureCategory.SERIAL,
                 summary=f"expected marker missing: {marker}",
             )
-        receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation="serial_boot_capture", started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success, inputs={"port": port, "baud": baud, "timeout": timeout, "expected_marker": marker, "idempotency_key": idempotency_key}, outputs={"marker_found": marker_found, "bounded_capture": not bool(marker)}, artifacts=[file_ref(log_path, self.store.project_dir, "text/plain")], failure=failure)
+        receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation=operation, started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success, inputs={"port": port, "baud": baud, "timeout": timeout, "expected_marker": marker, "idempotency_key": idempotency_key, "idempotency_authority": idempotency_authority(idempotency_key)}, outputs={"marker_found": marker_found, "bounded_capture": not bool(marker)}, artifacts=[file_ref(log_path, self.store.project_dir, "text/plain")], failure=failure)
         self.store.write_receipt(receipt, "serial"); return receipt

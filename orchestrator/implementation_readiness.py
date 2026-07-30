@@ -57,16 +57,16 @@ def assess_implementation_readiness(
     # custom operations must pass through the fact/readiness path below.
     if selection.get("decision") == "custom":
         declared_coverage.clear()
-    # MCU-native owners use the installed ESP-IDF API surface, which is
-    # grounded by a local_idf selection receipt rather than a component
-    # Registry record or an external-part datasheet.  Treat that receipt as
-    # covering the frozen lifecycle operations; otherwise a generic board
-    # resource owner is incorrectly routed to the external datasheet reader.
-    if (
-        selection.get("decision") == "local_idf"
-        and selection.get("provider_receipt_id")
-    ):
-        declared_coverage.update(required)
+    # A local-IDF receipt proves only explicitly enumerated API capabilities.
+    # It is never owner-wide authority.
+    if selection.get("decision") == "local_idf":
+        declared_coverage.intersection_update(
+            set(
+                selection.get("selection_evidence", {}).get(
+                    "operation_capabilities", []
+                )
+            )
+        )
     component_covered = [
         operation for operation in required if operation in declared_coverage
     ]
@@ -79,7 +79,10 @@ def assess_implementation_readiness(
             item
             for item in existing_facts
             if str(item.get("subsystem_id") or owner) == owner
-            and str(item.get("parameter") or "") == operation
+            and (
+                operation in set(map(str, item.get("capability_ids", [])))
+                or str(item.get("operation_id") or "") == operation
+            )
         ]
         facts = [item for item in facts if item.get("provider_receipt_id")]
         if not facts:

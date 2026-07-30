@@ -42,3 +42,4 @@ projects/*/private/
 projects/*/design-package/.staging/
 projects/*/execution/
 projects/*/logs/
+projects/*/.v/

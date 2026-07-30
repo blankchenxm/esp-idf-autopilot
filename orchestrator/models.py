@@ -20,6 +20,7 @@ class RunMode(StrEnum):
     CONTINUOUS = "CONTINUOUS"
     WAITING_TIER_C = "WAITING_TIER_C"
     PAUSED = "PAUSED"
+    INTERRUPTED = "INTERRUPTED"
     BLOCKED = "BLOCKED"
     FAULTED = "FAULTED"
     COMPLETE = "COMPLETE"
@@ -124,13 +125,18 @@ class Diagnostic(StrictModel):
     responsible_party: str
     affected_owner: str | None = None
     subsystem_id: str | None = None
+    invariant_id: str | None = None
+    operation_id: str | None = None
     test_id: str | None = None
+    image_id: str | None = None
     summary: str
     evidence: list[ArtifactRef] = Field(default_factory=list)
     retry_scope: str | None = None
     user_action_required: str | None = None
     material_fingerprint: str | None = None
     failure_fingerprint: str | None = None
+    invalidated_descendants: list[str] = Field(default_factory=list)
+    model_call_admitted: bool = False
 
 
 class Receipt(StrictModel):
@@ -217,6 +223,8 @@ class Closure(StrictModel):
 class ReleaseEvidence(StrictModel):
     closure_pass: bool
     selftest_disabled: bool
+    fullclean_receipt_id: str | None = None
+    configure_receipt_id: str | None = None
     build_log: str
     flash_log: str
     serial_log: str
@@ -226,6 +234,8 @@ class ReleaseEvidence(StrictModel):
     build_receipt_id: str
     flash_receipt_id: str
     serial_receipt_id: str
+    production_scenario_receipt_ids: list[str] = Field(default_factory=list)
+    production_scenario_ids: list[str] = Field(default_factory=list)
 
 
 class RunRecord(StrictModel):

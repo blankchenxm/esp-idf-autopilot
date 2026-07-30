@@ -328,7 +328,9 @@ def _normalize_verification_batches(contract: dict[str, Any]) -> None:
     the later run deterministically and preserve the original label for the
     first run.  Isolated owners are likewise always given their own batch.
     """
-    if contract.get("schema_version") not in {"1.2", "1.3"}:
+    from .schema_capabilities import schema_has
+    version = str(contract.get("schema_version") or "")
+    if not schema_has(version, "verification_batch"):
         return
     try:
         from .validators import topological_subsystems
@@ -344,7 +346,7 @@ def _normalize_verification_batches(contract: dict[str, Any]) -> None:
         owner for owner in order
         if definitions.get(owner, {}).get("execution_role", "component") == "component"
     ]
-    if contract.get("schema_version") == "1.3":
+    if schema_has(version, "implementation_facts"):
         # A provider explicitly opts a non-destructive owner into sharing via
         # ``batch_compatible``.  Group only adjacent opted-in owners; this
         # keeps dependency order and never infers that a register/DMA/storage

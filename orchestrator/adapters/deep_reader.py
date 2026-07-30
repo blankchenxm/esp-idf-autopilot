@@ -17,6 +17,7 @@ from ..runtime_paths import ProjectRuntime
 from ..model_context import (
     build_readonly_context_envelope,
     parse_codex_jsonl_usage,
+    validate_model_usage_budget,
 )
 from ..storage import atomic_write_json
 
@@ -118,6 +119,14 @@ text. The extraction SHA-256 is {extracted_text_sha256}."""
             if process.returncode != 0:
                 raise RuntimeError(f"datasheet deep reader exited {process.returncode}: {stdout[-1000:]}")
             self.last_usage = parse_codex_jsonl_usage(stdout)
+            budget_errors = validate_model_usage_budget(
+                self.last_usage, envelope["budgets"]
+            )
+            if budget_errors:
+                raise RuntimeError(
+                    "datasheet reader model budget exceeded: "
+                    + "; ".join(budget_errors)
+                )
             value = json.loads(output.read_text(encoding="utf-8"))
             facts = value.get("facts")
             if not isinstance(facts, list) or not facts:

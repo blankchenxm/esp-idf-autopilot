@@ -7,6 +7,7 @@ from orchestrator.model_context import (
     MAX_LOG_BYTES,
     build_owner_context_envelope,
     parse_codex_jsonl_usage,
+    validate_model_usage_budget,
 )
 
 
@@ -54,7 +55,7 @@ def test_owner_context_is_deterministic_bounded_and_scoped(
     unrelated.write_text("void erase(void) {}\n")
     log = tmp_path / "failure.log"
     secret = "never-copy-this-secret"
-    log.write_text(("x" * (MAX_LOG_BYTES * 2)) + secret)
+    log.write_text(("x" * (10 * 1024 * 1024)) + secret)
 
     arguments = {
         "project": "probe",
@@ -99,3 +100,20 @@ def test_codex_jsonl_usage_is_accounted() -> None:
     assert usage["cached_input_tokens"] == 80
     assert usage["total_tokens"] == 115
     assert usage["source"] == "codex_jsonl"
+
+
+def test_model_usage_budget_never_expands_context_automatically() -> None:
+    usage = {
+        "source": "codex_jsonl",
+        "input_tokens": 40_001,
+        "output_tokens": 1,
+        "reasoning_output_tokens": 1,
+        "tool_calls": 1,
+    }
+    errors = validate_model_usage_budget(usage, {
+        "max_input_tokens": 40_000,
+        "max_output_tokens": 8_000,
+        "max_reasoning_tokens": 8_000,
+        "max_tool_calls": 32,
+    })
+    assert errors == ["input_tokens exceeded max_input_tokens"]

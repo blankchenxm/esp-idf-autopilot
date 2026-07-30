@@ -73,6 +73,75 @@ def valid_v16_contract(project: str = "fixture") -> dict:
     return value
 
 
+def valid_v17_contract(project: str = "fixture") -> dict:
+    value = valid_v16_contract(project)
+    value["schema_version"] = "1.7"
+    value["operations"] = [{
+        "operation_id": "op.start",
+        "owner": "probe",
+        "kind": "system_orchestration",
+        "risk": "safe",
+        "required_capabilities": ["cap.start"],
+        "authority_sources": [{
+            "source_type": "input",
+            "authority_ref": "requirements:R1",
+            "capability_ids": ["cap.start"],
+        }],
+        "implementation_assertions": [{
+            "path_glob": "main/**/*.c",
+            "symbol": "probe_start",
+            "link_symbol": "probe_start",
+        }],
+        "runtime_probe": {
+            "test_id": "PROBE-READY",
+            "observation": "serial",
+        },
+        "consumers": ["step:ready", "R1"],
+    }]
+    flow = value["architecture"]["runtime_flow"]
+    flow["production_config_predicate"] = {
+        "CONFIG_APP_SELFTEST": "n"
+    }
+    flow["edges"] = []
+    flow["transitions"] = [{
+        "from": "startup", "event": "start", "to": "steady"
+    }]
+    flow["steps"][0].update({
+        "operation_ids": ["op.start"],
+        "input_ports": [],
+        "output_ports": [{"name": "ready", "type": "event"}],
+        "observation_points": ["serial:ready"],
+    })
+    value["architecture"]["component_api_manifest"] = [{
+        "component": "probe",
+        "responsibility_layer": "system_orchestration",
+        "resources": [],
+        "dependencies": [],
+        "allowed_dependency_layers": [],
+        "exported_semantic_apis": [{
+            "header": "probe.h", "symbol": "probe_start"
+        }],
+        "test_only": False,
+    }]
+    value["integration"]["production_scenarios"] = [{
+        "scenario_id": "normal-ready",
+        "entrypoint": "probe_start",
+        "runtime_step_ids": ["ready"],
+        "operation_ids": ["op.start"],
+        "observation_points": ["serial:ready"],
+        "expected": {"marker": "READY", "count_min": 1},
+    }]
+    value["release"].update({
+        "core_production_scenario_ids": ["normal-ready"],
+        "forbidden_runtime_patterns": ["SELFTEST"],
+    })
+    return value
+
+
+def test_v17_compiles_all_current_hard_rule_fields():
+    assert validate_contract(valid_v17_contract()) == []
+
+
 def test_v16_requires_production_runtime_flow_for_every_requirement():
     value = valid_v16_contract()
     assert validate_contract(value) == []

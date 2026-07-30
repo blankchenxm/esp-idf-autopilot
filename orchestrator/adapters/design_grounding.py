@@ -244,10 +244,10 @@ class DesignGroundingAdapter:
                         self.deep_reader, "last_usage",
                         {"source": "unavailable"},
                     ),
-                    "context_digest": getattr(
+                    "model_context_digest": getattr(
                         self.deep_reader, "last_context_digest", None
                     ),
-                    "context_bytes": getattr(
+                    "model_context_bytes": getattr(
                         self.deep_reader, "last_context_bytes", None
                     ),
                 }

@@ -21,6 +21,7 @@ MODEL_ACTION_MODES = frozenset({
     "FAULTED",
     "COMPLETE",
     "PAUSED",
+    "INTERRUPTED",
 })
 
 
@@ -176,6 +177,31 @@ def read_control_events(
 def latest_control_event_seq(repo_root: Path, project: str) -> int:
     runtime = ProjectRuntime(repo_root, project).ensure()
     return int(_read(runtime.control_event_sequence).get("event_seq") or 0)
+
+
+def validate_control_event_delivery(
+    events: list[dict[str, Any]],
+    sequence_state: dict[str, Any] | None = None,
+) -> list[str]:
+    """Validate that progress delivery cannot become a model wake boundary."""
+    errors: list[str] = []
+    previous = 0
+    for event in sorted(events, key=lambda item: int(item.get("event_seq") or 0)):
+        sequence = int(event.get("event_seq") or 0)
+        if sequence <= previous:
+            errors.append("control event_seq is not strictly monotonic")
+        previous = sequence
+        kind = str(event.get("kind") or "")
+        requires_model = bool(event.get("model_action_required"))
+        if kind == "PROGRESS" and requires_model:
+            errors.append("PROGRESS event requests a model action")
+        if kind == "MODEL_ACTION_REQUIRED" and not requires_model:
+            errors.append("MODEL_ACTION_REQUIRED event lacks its wake flag")
+    if sequence_state:
+        persisted = int(sequence_state.get("event_seq") or 0)
+        if persisted < previous:
+            errors.append("control sequence projection trails persisted events")
+    return errors
 
 
 def await_control_event(

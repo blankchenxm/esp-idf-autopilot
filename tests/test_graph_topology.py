@@ -13,10 +13,33 @@ from orchestrator.models import (
 
 def test_graph_contains_mandatory_gates_in_code():
     graph = build_graph(Path(__file__).resolve().parents[1]).get_graph(); nodes = set(graph.nodes); edges = {(edge.source, edge.target) for edge in graph.edges}
-    assert {"initialize", "pause_control", "preflight", "design", "approval", "bind", "readiness", "subsystem", "tier_c", "integration", "closure", "release", "recover"} <= nodes
-    assert ("design", "approval") in edges and ("bind", "readiness") in edges
-    assert ("readiness", "subsystem") in edges and ("closure", "release") in edges
-    assert ("integration", "tier_c") in edges and ("tier_c", "closure") in edges
+    assert {
+        "initialize", "pause_control", "preflight", "design", "approval",
+        "invariant_gate", "schema_gate", "operation_authority", "bind",
+        "verification_batches", "implementation_materialize",
+        "implementation_completeness",
+        "source_validate", "configure", "build", "flash", "observe",
+        "evaluate", "evidence_commit", "component_architecture",
+        "production_composition", "integration_prepare",
+        "integration_configure", "integration_build", "integration_flash",
+        "integration_observe", "integration_evaluate",
+        "integration_evidence_commit", "tier_c_artifact_materialization",
+        "tier_c", "closure", "release_prepare", "release_fullclean",
+        "release_configure", "release_build", "release_flash",
+        "release_observe", "release_validate", "recover",
+    } <= nodes
+    assert ("design", "approval") in edges
+    assert ("approval", "invariant_gate") in edges
+    assert ("operation_authority", "bind") in edges
+    assert ("bind", "verification_batches") in edges
+    assert (
+        "implementation_materialize", "implementation_completeness"
+    ) in edges
+    assert ("configure", "build") in edges and ("observe", "evaluate") in edges
+    assert ("integration_evidence_commit", "tier_c_artifact_materialization") in edges
+    assert ("tier_c", "closure") in edges
+    assert ("closure", "release_prepare") in edges
+    assert ("release_fullclean", "release_configure") in edges
     assert any(edge.target == "recover" for edge in graph.edges)
 
 

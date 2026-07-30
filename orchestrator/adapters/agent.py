@@ -21,6 +21,7 @@ from ..runtime_paths import ProjectRuntime
 from ..model_context import (
     build_owner_context_envelope,
     parse_codex_jsonl_usage,
+    validate_model_usage_budget,
 )
 
 
@@ -152,8 +153,21 @@ verification."""
                     profile.refresh_auth()
             log_path.write_text(redact_values(output or "", secrets), encoding="utf-8")
             model_usage = parse_codex_jsonl_usage(output or "")
+            budget_errors = validate_model_usage_budget(
+                model_usage, envelope["budgets"]
+            )
             if returncode != 0:
                 failure = Failure(category=FailureCategory.TOOL, summary=(f"implementation agent timed out after {self.timeout} seconds" if returncode == -1 else f"implementation agent exited {returncode}"))
+            elif budget_errors:
+                failure = Failure(
+                    category=FailureCategory.STALL,
+                    summary=(
+                        "implementation model budget exceeded without "
+                        "automatic context expansion: "
+                        + "; ".join(budget_errors)
+                    ),
+                    retryable=False,
+                )
             else:
                 for source in mirror.rglob("*"):
                     if not source.is_file(): continue
@@ -167,7 +181,7 @@ verification."""
                     destination = self.store.project_dir / relative; destination.parent.mkdir(parents=True, exist_ok=True)
                     if not destination.exists() or destination.read_bytes() != source.read_bytes():
                         shutil.copy2(source, destination); imported.append(relative.as_posix())
-            success = returncode == 0
+            success = returncode == 0 and not budget_errors
             if success:
                 required_component = mirror / "components" / action.owner
                 required_project = mirror / "CMakeLists.txt"
@@ -185,5 +199,5 @@ verification."""
             artifacts.append(file_ref(
                 persisted_packet, self.store.project_dir, "application/json"
             ))
-        receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation="implement_or_repair", started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success, command=["codex", "exec", "--json", "disposable-mirror"], inputs={"owner": action.owner, "context_digest": envelope.get("context_digest") if "envelope" in locals() else None}, outputs={"imported_files": imported, "model_usage": model_usage if "model_usage" in locals() else {"source": "unavailable"}, "context_bytes": context_bytes if "context_bytes" in locals() else None}, artifacts=artifacts, failure=failure)
+        receipt = Receipt(receipt_id=receipt_id, run_id=self.run_id, operation="implement_or_repair", started_at=started, finished_at=datetime.now(timezone.utc).isoformat(), success=success, command=["codex", "exec", "--json", "disposable-mirror"], inputs={"owner": action.owner, "reason": "implementation_or_repair", "context_digest": envelope.get("context_digest") if "envelope" in locals() else None}, outputs={"imported_files": imported, "model_usage": model_usage if "model_usage" in locals() else {"source": "unavailable"}, "model_context_digest": envelope.get("context_digest") if "envelope" in locals() else None, "model_context_bytes": context_bytes if "context_bytes" in locals() else None, "context_bytes": context_bytes if "context_bytes" in locals() else None, "budgets": envelope.get("budgets") if "envelope" in locals() else None}, artifacts=artifacts, failure=failure)
         self.store.write_receipt(receipt, "agent"); return receipt

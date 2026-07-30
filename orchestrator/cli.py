@@ -50,6 +50,7 @@ def _parser() -> argparse.ArgumentParser:
     pause = sub.add_parser("pause", help="persist an explicit user pause at the next safe graph node")
     _project_arg(pause); pause.add_argument("--revision", type=int); pause.add_argument("--reason", default="explicit user pause")
     status = sub.add_parser("status"); _project_arg(status); status.add_argument("--revision", type=int)
+    report = sub.add_parser("report"); _project_arg(report); report.add_argument("--run-id")
     await_event = sub.add_parser(
         "await-event",
         help="block outside the model until a meaningful project transition",
@@ -451,6 +452,14 @@ def _main(argv: list[str] | None = None) -> int:
     if args.command == "prepare-revision":
         from .design_package import create_revision
         print(create_revision(REPO_ROOT, project, args.from_revision, args.to_revision)); return 0
+    if args.command == "report":
+        from .run_metrics import build_run_report
+        print(json.dumps(
+            build_run_report(REPO_ROOT, project, args.run_id),
+            ensure_ascii=False,
+            indent=2,
+        ))
+        return 0
     if args.command == "rotate-credentials":
         if not args.approve:
             raise ValueError("credential rotation requires explicit --approve")
