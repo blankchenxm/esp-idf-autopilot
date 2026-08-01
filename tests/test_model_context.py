@@ -5,8 +5,10 @@ from pathlib import Path
 
 from orchestrator.model_context import (
     MAX_LOG_BYTES,
+    build_design_provider_context_plan,
     build_owner_context_envelope,
     parse_codex_jsonl_usage,
+    validate_design_provider_context_plan,
     validate_model_usage_budget,
 )
 
@@ -117,3 +119,66 @@ def test_model_usage_budget_never_expands_context_automatically() -> None:
         "max_tool_calls": 32,
     })
     assert errors == ["input_tokens exceeded max_input_tokens"]
+
+
+def test_model_usage_budget_allows_unbounded_tokens_when_limits_are_absent() -> None:
+    usage = {
+        "source": "codex_jsonl",
+        "input_tokens": 500_000,
+        "output_tokens": 50_000,
+        "reasoning_output_tokens": 50_000,
+        "tool_calls": 3,
+    }
+
+    errors = validate_model_usage_budget(usage, {
+        "max_tool_calls": 8,
+    })
+
+    assert errors == []
+
+
+def test_model_usage_budget_still_enforces_tools_without_token_limits() -> None:
+    usage = {
+        "source": "codex_jsonl",
+        "input_tokens": 500_000,
+        "output_tokens": 50_000,
+        "reasoning_output_tokens": 50_000,
+        "tool_calls": 9,
+    }
+
+    errors = validate_model_usage_budget(usage, {"max_tool_calls": 8})
+
+    assert errors == ["tool_calls exceeded max_tool_calls"]
+
+
+def test_design_provider_context_plan_excludes_unrelated_repository_inputs(
+    tmp_path: Path,
+) -> None:
+    project = "crumb"
+    (tmp_path / "requirements").mkdir()
+    (tmp_path / "connections").mkdir()
+    (tmp_path / "requirements" / f"{project}.md").write_text(
+        "# requirements\n", encoding="utf-8"
+    )
+    (tmp_path / "connections" / f"{project}.md").write_text(
+        "# connections\n", encoding="utf-8"
+    )
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "schemas").mkdir()
+    (tmp_path / "docs" / "DESIGN-HARNESS.md").write_text(
+        "design rules\n", encoding="utf-8"
+    )
+    (tmp_path / "docs" / "UNRELATED.md").write_text(
+        "x" * 2_000_000, encoding="utf-8"
+    )
+    (tmp_path / "schemas" / "execution-contract.schema.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
+
+    plan = build_design_provider_context_plan(tmp_path, project)
+
+    paths = {item["path"] for item in plan["sources"]}
+    assert "docs/UNRELATED.md" not in paths
+    assert plan["bundle_files"] == 1
+    assert "max_input_tokens" not in plan
+    assert validate_design_provider_context_plan(plan) == []

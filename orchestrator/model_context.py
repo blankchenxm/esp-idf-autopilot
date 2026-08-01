@@ -14,6 +14,17 @@ MAX_CONTEXT_BYTES = 128 * 1024
 MAX_LOG_BYTES = 16 * 1024
 MAX_DESIGN_CONTEXT_BYTES = 512 * 1024
 
+# Design synthesis needs the contract rules and source authority, not the
+# repository's full documentation/schema tree.  Keep this list small and
+# explicit so a new unrelated document cannot silently become model input.
+DESIGN_PROVIDER_DOCUMENTS = (
+    "docs/DESIGN-HARNESS.md",
+    "docs/ARCHITECTURE.md",
+    "docs/VERIFICATION-EVIDENCE.md",
+    "schemas/execution-contract.schema.json",
+    "schemas/schema-capabilities.json",
+)
+
 
 def _sha256_file(path: Path) -> str:
     import hashlib
@@ -195,6 +206,9 @@ def build_readonly_context_envelope(
     authority_files: list[Path],
     secret_values: list[str] | None = None,
     max_context_bytes: int = MAX_DESIGN_CONTEXT_BYTES,
+    max_input_tokens: int | None = 160_000,
+    max_output_tokens: int | None = 16_000,
+    max_reasoning_tokens: int | None = 16_000,
 ) -> dict[str, Any]:
     """Build a fresh-context packet for Design and targeted readers."""
     secrets = secret_values or []
@@ -214,6 +228,18 @@ def build_readonly_context_envelope(
             "sha256": _sha256_file(resolved),
             "size": resolved.stat().st_size,
         })
+    budgets = {
+        "max_context_bytes": max_context_bytes,
+        "max_model_transactions": 1,
+        "max_followups": 0,
+        "max_tool_calls": 8,
+    }
+    if max_input_tokens is not None:
+        budgets["max_input_tokens"] = max_input_tokens
+    if max_output_tokens is not None:
+        budgets["max_output_tokens"] = max_output_tokens
+    if max_reasoning_tokens is not None:
+        budgets["max_reasoning_tokens"] = max_reasoning_tokens
     base = {
         "context_schema_version": CONTEXT_SCHEMA_VERSION,
         "reason": reason,
@@ -221,15 +247,7 @@ def build_readonly_context_envelope(
         "instruction": _redact_known_values(instruction, secrets),
         "authority_files": files,
         "modification_allowlist": [],
-        "budgets": {
-            "max_context_bytes": max_context_bytes,
-            "max_model_transactions": 1,
-            "max_followups": 0,
-            "max_input_tokens": 160_000,
-            "max_output_tokens": 16_000,
-            "max_reasoning_tokens": 16_000,
-            "max_tool_calls": 8,
-        },
+        "budgets": budgets,
         "redactions": {
             "plaintext_secret_count": len([value for value in secrets if value]),
             "plaintext_values_included": False,
@@ -245,6 +263,53 @@ def build_readonly_context_envelope(
             f"{len(serialized)}"
         )
     return envelope
+
+
+def build_design_provider_context_plan(
+    repo_root: Path, project: str,
+) -> dict[str, Any]:
+    """Describe the bounded Design authority bundle before model invocation.
+
+    The plan contains hashes and sizes only.  The provider later creates a
+    redacted bundle from these exact source paths.  Missing optional docs are
+    tolerated for in-memory graph tests; the two user inputs remain mandatory.
+    """
+    sources: list[dict[str, Any]] = []
+    required = (
+        repo_root / "requirements" / f"{project}.md",
+        repo_root / "connections" / f"{project}.md",
+    )
+    optional = tuple(repo_root / item for item in DESIGN_PROVIDER_DOCUMENTS)
+    for path in (*required, *optional):
+        if not path.is_file():
+            if path in required:
+                raise FileNotFoundError(f"design provider authority is missing: {path}")
+            continue
+        sources.append({
+            "path": path.relative_to(repo_root).as_posix(),
+            "sha256": _sha256_file(path),
+            "size": path.stat().st_size,
+        })
+    return {
+        "schema_version": "1.0",
+        "project": project,
+        "bundle_files": 1,
+        "sources": sources,
+        "max_tool_calls": 8,
+    }
+
+
+def validate_design_provider_context_plan(plan: dict[str, Any]) -> list[str]:
+    """Reject an unbounded Design context before starting a model transaction."""
+    errors: list[str] = []
+    sources = plan.get("sources")
+    if not isinstance(sources, list) or not sources:
+        return ["design provider context has no authority sources"]
+    if int(plan.get("bundle_files") or 0) != 1:
+        errors.append("design provider context must use exactly one authority bundle")
+    if int(plan.get("bundle_files") or 0) + 2 > int(plan.get("max_tool_calls") or 0):
+        errors.append("design provider context leaves too few tool calls for the authority bundle")
+    return errors
 
 
 def validate_model_context(envelope: dict[str, Any]) -> list[str]:
@@ -277,12 +342,19 @@ def validate_model_context(envelope: dict[str, Any]) -> list[str]:
     redactions = envelope.get("redactions") or {}
     if redactions.get("plaintext_values_included") is not False:
         errors.append("model context lacks deterministic plaintext redaction proof")
-    for key in (
-        "max_model_transactions", "max_input_tokens", "max_output_tokens",
-        "max_reasoning_tokens", "max_tool_calls",
-    ):
+    for key in ("max_model_transactions", "max_tool_calls"):
         if int((envelope.get("budgets") or {}).get(key) or 0) <= 0:
             errors.append(f"model context budget {key!r} is missing")
+    # Token ceilings are optional accounting policy.  When present they must
+    # be positive; when absent usage is still recorded but never becomes a
+    # correctness or availability gate.
+    for key in (
+        "max_input_tokens", "max_output_tokens", "max_reasoning_tokens",
+    ):
+        if key in (envelope.get("budgets") or {}) and int(
+            (envelope.get("budgets") or {}).get(key) or 0
+        ) <= 0:
+            errors.append(f"model context budget {key!r} must be positive")
     return errors
 
 
@@ -342,6 +414,9 @@ def validate_model_usage_budget(
         ("reasoning_output_tokens", "max_reasoning_tokens"),
         ("tool_calls", "max_tool_calls"),
     ):
-        if int(usage.get(usage_key) or 0) > int(budgets[budget_key]):
+        limit = budgets.get(budget_key)
+        if limit is None:
+            continue
+        if int(usage.get(usage_key) or 0) > int(limit):
             errors.append(f"{usage_key} exceeded {budget_key}")
     return errors

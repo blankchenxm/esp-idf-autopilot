@@ -37,7 +37,7 @@ clean Crumb run should begin only after the P0 acceptance suite passes.
 | Side-effect checkpoint granularity | `DONE` | Materialize, completeness/source, configure, build, flash, observe, evaluate, and Evidence commit are separate authority-bound idempotent nodes. |
 | Typed recovery and lineage retry budget | `DONE` | Untyped faults cannot reach agents; stable lineage/material ledgers allow one model repair and invalidate only declared descendants. |
 | Model polling and progress observation | `DONE` | Monotonic/coalesced control events wake models only for meaningful typed transitions; `status` is read-only. |
-| Model context minimization | `DONE` | Fresh digest-bound owner packets enforce scope, redaction, byte/token/reasoning/tool budgets, and bounded artifact excerpts. |
+| Model context minimization | `DONE` | Fresh digest-bound packets enforce scope, redaction, bounded authority/artifact bytes, and transaction/tool limits. Design token usage is recorded, not used as a correctness gate. |
 | Release cleanliness and production behavior | `DONE` | Explicit fresh-root fullclean/configure/build/flash/observe/validate nodes require a core production scenario and reject forbidden states. |
 | Schema enforcement and legacy migration | `DONE` | The capability matrix admits only schema 1.7 for new authoritative runs; migration creates an unapproved reported revision. |
 
@@ -204,7 +204,7 @@ Harness-owned model invocation:
 | `source_manifest` | Allowed files with hashes and a bounded relevant diff. |
 | `diagnostic` | One typed failure plus bounded artifact excerpts. |
 | `modification_allowlist` | Exact writable project paths. |
-| `budgets` | Maximum input, output, reasoning, and tool calls. |
+| `budgets` | Mandatory transaction/tool limits plus optional node-specific token ceilings. |
 | `redactions` | Deterministic proof that credentials/private values were excluded. |
 
 Raw serial/build logs, complete event streams, unrelated source trees, complete
@@ -223,9 +223,10 @@ request and returned excerpt become packet-linked Receipts.
    and include its hash/path.
 5. Do not include other owners unless declared consumers are in the retry scope.
 6. Return compact structured tool results; never inject full polling transcripts.
-7. Record actual token/tool usage against the declared packet budget.
-8. Exceeding a budget without material progress becomes a typed internal stall,
-   not an automatic larger-context retry.
+7. Record actual token/tool usage for every packet. Design provider token usage
+   is observational and never turns an otherwise valid result into a fault.
+8. Exceeding a declared transaction/tool limit without material progress becomes
+   a typed internal stall, not an automatic larger-context retry.
 
 ### Initial budgets and measurement gate
 
@@ -238,6 +239,12 @@ Initial limits are guardrails, not permanent model-specific constants:
 - unrelated full contract/history inclusion: zero;
 - median non-Design input target: at most 40,000 tokens and at most 30% of the
   audited Crumb baseline, whichever is lower.
+
+Design synthesis has no fixed input, output, or reasoning token failure
+threshold. Its usage is still recorded. Availability and loop protection come
+from one model transaction, one explicit authority bundle, a tool-call limit,
+provider timeout, deterministic Schema/validator gates, and typed repair/stall
+routing. A token total alone cannot invalidate a schema-valid Design result.
 
 Adjusting a limit requires benchmark evidence and must not weaken authority or
 verification.
@@ -855,7 +862,7 @@ its owning deterministic checkpoint before an invalid downstream side effect.
 - The generic E2E benchmark reduces total model input tokens by at least 55%
   from the audited baseline before functional P0 implementation continues.
 - Node/run reports expose model calls, cached/uncached input, output, reasoning,
-  tool calls, non-model progress events, and packet budgets.
+  tool calls, non-model progress events, and applicable packet limits.
 - Every hard rule has a complete invariant-registry entry, graph-conformance
   coverage, and at least one negative scenario.
 - All P0 schema, validator, graph, adapter, Receipt, and Evidence changes exist.

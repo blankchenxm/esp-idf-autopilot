@@ -35,18 +35,19 @@ from a sequence without replaying model turns.
 Every Harness-owned model call starts from a fresh deterministic context
 packet built from canonical state. Owner packets contain only the relevant
 contract slice, authority hashes, source manifest, bounded diagnostics, exact
-writable paths, redaction proof, and budgets. Raw histories and full logs stay
-outside the packet. Actual cached/uncached input, output, reasoning, tool calls,
+writable paths, redaction proof, and transaction/tool limits. Raw histories and
+full logs stay outside the packet. Design input/output/reasoning token totals
+are metrics rather than failure gates. Actual cached/uncached input, output, reasoning, tool calls,
 non-model progress, and suppressed progress are available through:
 
 ```powershell
 python -m orchestrator.cli report --project <project> --run-id <run-id>
 ```
 
-The deterministic replay ceiling is 2,400,000 input tokens versus the audited
-224,078,716-token baseline, a 98.9289% reduction ceiling for the modeled
+The deterministic replay estimate is 2,400,000 input tokens versus the audited
+224,078,716-token baseline, a 98.9289% reduction estimate for the modeled
 automatic-turn workload and above the 55% gate. This is not a claim about a
-new hardware run. The realistic whole-run target remains 75–90%; the next
+new hardware run or a runtime token cap. The realistic whole-run target remains 75–90%; the next
 clean device E2E must supply measured report data.
 
 ## Component-count clarification
@@ -61,7 +62,7 @@ value, and independently derives the minimum compatible verification images.
 
 The regression surface covers the 21 generic scenarios, 1,000 coalesced
 progress ticks with zero model wake, deterministic owner-context isolation,
-budget enforcement, operation authority, unsupported stubs, production
+Design token accounting, transaction/tool limit enforcement, operation authority, unsupported stubs, production
 bypass, Tier C producer binding, image sharing/isolation, worker death,
 lineage stability, low-level code in `main/`, Release fullclean/behavior/
 secret checks, project hygiene, migration, and crash-before/crash-after

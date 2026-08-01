@@ -149,6 +149,7 @@ def test_design_graph_has_deterministic_inventory_and_grounding_nodes(tmp_path: 
     edges = {(edge.source, edge.target) for edge in graph.edges}
     assert {
         "initialize",
+        "provider_context_gate",
         "synthesize",
         "inventory",
         "ground",
@@ -159,6 +160,8 @@ def test_design_graph_has_deterministic_inventory_and_grounding_nodes(tmp_path: 
         "blocked",
         "faulted",
     } <= nodes
+    assert ("initialize", "provider_context_gate") in edges
+    assert ("provider_context_gate", "synthesize") in edges
     assert ("synthesize", "inventory") in edges
     assert ("inventory", "ground") in edges
     assert ("ground", "validate") in edges

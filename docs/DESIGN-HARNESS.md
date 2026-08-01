@@ -75,6 +75,11 @@ then bound back to an exact extraction span and SHA-256.
 staging and atomic promotion independently of the invoking terminal or Codex conversation.
 Repeated Design calls for the same project observe the same live job; different projects have
 different job records, graph threads, locks, workspaces, and provider profiles.
+The synthesis provider receives one explicit redacted authority bundle rather
+than the repository documentation/schema tree. Input, output, and reasoning
+token usage is persisted for measurement but has no fixed failure threshold;
+one transaction, bounded tool calls, provider timeout, Schema validation, and
+typed repair/stall routing remain the availability and loop-safety boundaries.
 `orchestrator.cli status` reports `DESIGN_RUNNING`, `WAITING_DESIGN_INPUT`, `WAITING_SPEC`,
 `BLOCKED`, or `FAULTED`. `BLOCKED` is reserved for an evidenced external constraint;
 Harness/provider exhaustion and broken staging invariants are `FAULTED`. A dead worker is recorded

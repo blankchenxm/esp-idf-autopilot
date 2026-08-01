@@ -26,8 +26,11 @@ from .design_inventory import materialize_grounding_requirements
 from .input_authority import exact_authorized_identifier
 from .input_authority import compile_input_authority
 from .model_context import (
+    DESIGN_PROVIDER_DOCUMENTS,
     build_readonly_context_envelope,
+    build_design_provider_context_plan,
     parse_codex_jsonl_usage,
+    validate_design_provider_context_plan,
     validate_model_usage_budget,
 )
 from .schema_capabilities import current_schema_version, schema_has
@@ -554,6 +557,40 @@ def _codex_design_command(work: Path, schema: Path, output: Path) -> list[str]:
     return command
 
 
+def _write_design_authority_bundle(
+    repo_root: Path, work: Path, project: str, raw_requirements: str,
+) -> Path:
+    """Materialize one redacted, hash-annotated authority file for synthesis."""
+    sections: list[str] = [
+        "# Design provider authority bundle\n",
+        "This file is the complete bounded authority surface for this Design call.\n",
+    ]
+    source_paths = [
+        repo_root / "requirements" / f"{project}.md",
+        repo_root / "connections" / f"{project}.md",
+        *(repo_root / item for item in DESIGN_PROVIDER_DOCUMENTS),
+    ]
+    for path in source_paths:
+        if not path.is_file():
+            continue
+        content = (
+            redact_text(raw_requirements)
+            if path == repo_root / "requirements" / f"{project}.md"
+            else path.read_text(encoding="utf-8")
+        )
+        source_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        relative = path.relative_to(repo_root).as_posix()
+        sections.extend([
+            f"\n## SOURCE {relative}\n",
+            f"sha256: {source_hash}\n\n",
+            content.rstrip(),
+            "\n",
+        ])
+    bundle = work / "design-authority.md"
+    bundle.write_text("".join(sections), encoding="utf-8")
+    return bundle
+
+
 class CodexDesignProvider:
     """Generate a project-agnostic draft; deterministic validators remain authoritative."""
 
@@ -589,9 +626,16 @@ class CodexDesignProvider:
             "Do not invoke skills, edit files, or perform external side effects.\n",
             encoding="utf-8",
         )
-        shutil.copytree(repo_root / "docs", work / "docs")
-        shutil.copytree(repo_root / "schemas", work / "schemas")
         atomic_write_json(work / "input-authority.json", compile_input_authority(repo_root, project))
+        authority_bundle = _write_design_authority_bundle(
+            repo_root, work, project, raw_requirements
+        )
+        context_plan = build_design_provider_context_plan(repo_root, project)
+        context_errors = validate_design_provider_context_plan(context_plan)
+        if context_errors:
+            raise RuntimeError(
+                "Design provider context gate failed: " + "; ".join(context_errors)
+            )
         # Existing projects need a real amendment baseline.  The newest
         # approved package is immutable/read-only context: a provider performs
         # impact analysis instead of regressing grounded facts merely because
@@ -608,9 +652,10 @@ class CodexDesignProvider:
         with tempfile.NamedTemporaryFile(prefix=f"{project}-", suffix=".json", dir=runtime, delete=False) as handle:
             output = Path(handle.name)
         prompt = f"""You are the Design Subgraph provider for ESP-IDF project {project!r}.
-Read requirements/{project}.md, connections/{project}.md, input-authority.json, AGENTS.md, docs/DESIGN-HARNESS.md,
-docs/ARCHITECTURE.md, docs/VERIFICATION-EVIDENCE.md, schemas/execution-contract.schema.json,
-and relevant local evidence. Do not edit files. Return only the requested JSON object.
+Read design-authority.md, input-authority.json, and AGENTS.md. The authority bundle contains
+the redacted user inputs and the selected Design/architecture/verification/schema sources with
+their source hashes. Do not search for or read any other files. Do not edit files. Return only
+the requested JSON object.
 
 If prior-approved-design/ exists, it is an immutable approved baseline. Perform an impact analysis
 against current inputs. Preserve still-applicable grounded facts, component selections, protocol
@@ -803,13 +848,15 @@ ERRORS (the exact fields to repair):
             # state outside that context.
             command = _codex_design_command(work, schema, output)
             authority_files = [
-                path for path in work.rglob("*")
-                if path.is_file()
-                and path.name not in {
-                    "model-context.json",
-                    "provider-prompt.txt",
-                }
+                authority_bundle,
+                work / "input-authority.json",
+                work / "AGENTS.md",
             ]
+            if self.repair_draft is not None:
+                authority_files.extend(
+                    path for path in (work / "repair-context").rglob("*")
+                    if path.is_file()
+                )
             envelope = build_readonly_context_envelope(
                 project=project,
                 reason=(
@@ -821,6 +868,16 @@ ERRORS (the exact fields to repair):
                 workspace=work,
                 authority_files=authority_files,
                 secret_values=secrets,
+                # Design synthesis is bounded by one transaction, a single
+                # authority bundle, tool-call limits, and provider timeout.
+                # Cumulative cached input accounting is intentionally not a
+                # terminal gate.  Output and reasoning usage are likewise
+                # metrics rather than correctness gates: a schema-valid
+                # Design must not be discarded only because model accounting
+                # crossed an arbitrary token threshold.
+                max_input_tokens=None,
+                max_output_tokens=None,
+                max_reasoning_tokens=None,
             )
             context_path = work / "model-context.json"
             atomic_write_json(context_path, envelope)

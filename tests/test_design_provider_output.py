@@ -17,6 +17,7 @@ from orchestrator.design_package import (
     _preserve_complete_contract_rows,
     _preserve_grounding_facts,
     _stage_grounding_context,
+    _write_design_authority_bundle,
 )
 
 
@@ -26,6 +27,33 @@ def test_isolated_provider_context_does_not_inherit_interactive_skill_directives
     assert 'shutil.copy2(repo_root / "AGENTS.md", work / "AGENTS.md")' not in source
     assert "Isolated Design Provider Context" in source
     assert "Read the files named in the caller's prompt with read-only tools" in source
+
+
+def test_design_authority_bundle_is_redacted_and_does_not_copy_full_tree(
+    tmp_path: Path,
+) -> None:
+    project = "crumb"
+    requirements = tmp_path / "requirements" / f"{project}.md"
+    connections = tmp_path / "connections" / f"{project}.md"
+    requirements.parent.mkdir(parents=True)
+    connections.parent.mkdir(parents=True)
+    requirements.write_text("wifi password: secret-value\n", encoding="utf-8")
+    connections.write_text("GPIO input\n", encoding="utf-8")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "schemas").mkdir()
+    (tmp_path / "docs" / "DESIGN-HARNESS.md").write_text("rules\n", encoding="utf-8")
+    (tmp_path / "schemas" / "execution-contract.schema.json").write_text("{}\n", encoding="utf-8")
+    work = tmp_path / "work"
+    work.mkdir()
+
+    bundle = _write_design_authority_bundle(
+        tmp_path, work, project, requirements.read_text(encoding="utf-8")
+    )
+
+    content = bundle.read_text(encoding="utf-8")
+    assert "secret-value" not in content
+    assert "[REDACTED: user-owned local secret]" in content
+    assert "docs/HARNESS-HARDENING-TODO.md" not in content
 
 
 def test_decodes_strict_codex_design_output() -> None:

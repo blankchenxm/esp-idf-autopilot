@@ -47,6 +47,10 @@ from .validators import (
     validate_design_package,
     validate_spec_review_surface,
 )
+from .model_context import (
+    build_design_provider_context_plan,
+    validate_design_provider_context_plan,
+)
 from .secrets import assert_no_secret_values, secret_values
 
 
@@ -67,6 +71,7 @@ class DesignState(TypedDict, total=False):
     grounding_providers_path: str
     blocking_unknowns_path: str
     input_authority_path: str
+    provider_context_plan_path: str
     errors_path: str
     diagnostics_path: str
     mode: str
@@ -218,11 +223,32 @@ class DesignGraphNodes:
             "attempt": attempt,
             "max_attempts": max_attempts,
             "mode": "DESIGN_RUNNING",
-            "phase": "synthesize",
-            "route": "synthesize",
+            "phase": "provider_context_gate",
+            "route": "provider_context_gate",
             "input_fingerprint": input_fingerprint,
             "repair_counts": dict(state.get("repair_counts") or {}),
             "input_authority_path": str(authority_path),
+        }
+
+    def provider_context_gate(self, state: DesignState) -> dict[str, Any]:
+        """Checkpoint the bounded Design model context before synthesis."""
+        self._progress(state, "provider_context_gate")
+        plan = build_design_provider_context_plan(
+            self.repo_root, str(state["project"])
+        )
+        errors = validate_design_provider_context_plan(plan)
+        attempt_dir = self._attempt_dir(state)
+        plan_path = attempt_dir / "provider-context-plan.json"
+        atomic_write_json(
+            plan_path,
+            {**plan, "valid": not errors, "errors": errors},
+        )
+        if errors:
+            raise ValueError("Design provider context gate failed: " + "; ".join(errors))
+        return {
+            "provider_context_plan_path": str(plan_path),
+            "phase": "synthesize",
+            "route": "synthesize",
         }
 
     def _input_fingerprint(self, project: str) -> str:
@@ -746,6 +772,7 @@ def build_design_graph(
     nodes = DesignGraphNodes(repo_root, provider_factory, grounding_factory)
     graph = StateGraph(DesignState)
     graph.add_node("initialize", nodes.initialize)
+    graph.add_node("provider_context_gate", nodes.provider_context_gate)
     graph.add_node("synthesize", nodes.synthesize)
     graph.add_node("inventory", nodes.inventory)
     graph.add_node("ground", nodes.ground)
@@ -756,7 +783,8 @@ def build_design_graph(
     graph.add_node("blocked", nodes.blocked)
     graph.add_node("faulted", nodes.faulted)
     graph.add_edge(START, "initialize")
-    graph.add_edge("initialize", "synthesize")
+    graph.add_edge("initialize", "provider_context_gate")
+    graph.add_edge("provider_context_gate", "synthesize")
     graph.add_edge("synthesize", "inventory")
     graph.add_edge("inventory", "ground")
     graph.add_edge("ground", "validate")
