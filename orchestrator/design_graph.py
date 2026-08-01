@@ -33,7 +33,7 @@ from .design_package import (
 )
 from .design_diagnostics import (
     design_route,
-    diagnostic_retry_key,
+    diagnostic_set_fingerprint,
     diagnostic_summaries,
     planning_diagnostics,
     structural_diagnostics,
@@ -62,7 +62,6 @@ class DesignState(TypedDict, total=False):
     session: str
     staging_root: str
     attempt: int
-    max_attempts: int
     draft_path: str
     planned_contract_path: str
     inventory_path: str
@@ -81,7 +80,7 @@ class DesignState(TypedDict, total=False):
     spec: str
     summary: str
     input_fingerprint: str
-    repair_counts: dict[str, int]
+    diagnostic_fingerprints: list[str]
 
 
 ProviderFactory = Callable[[], DesignProvider]
@@ -209,9 +208,6 @@ class DesignGraphNodes:
         staging = project_dir / "design-package" / ".staging" / session
         staging.mkdir(parents=True, exist_ok=True)
         attempt = int(state.get("attempt") or 1)
-        max_attempts = int(state.get("max_attempts") or 2)
-        if max_attempts not in {1, 2}:
-            raise ValueError("Design Graph supports at most one structural repair")
         attempt_dir = staging / f"attempt-{attempt:03d}"
         attempt_dir.mkdir(parents=True, exist_ok=True)
         authority_path = staging / "input-authority.json"
@@ -221,12 +217,13 @@ class DesignGraphNodes:
             "session": session,
             "staging_root": str(staging),
             "attempt": attempt,
-            "max_attempts": max_attempts,
             "mode": "DESIGN_RUNNING",
             "phase": "provider_context_gate",
             "route": "provider_context_gate",
             "input_fingerprint": input_fingerprint,
-            "repair_counts": dict(state.get("repair_counts") or {}),
+            "diagnostic_fingerprints": list(
+                state.get("diagnostic_fingerprints") or []
+            ),
             "input_authority_path": str(authority_path),
         }
 
@@ -469,12 +466,14 @@ class DesignGraphNodes:
                 "diagnostics": diagnostics,
             },
         )
+        fingerprint = diagnostic_set_fingerprint(diagnostics)
+        fingerprint_history = list(state.get("diagnostic_fingerprints") or [])
+        repeated_material = bool(diagnostics) and fingerprint in fingerprint_history
         route, mode, phase = design_route(
-            diagnostics,
-            attempt=int(state["attempt"]),
-            max_attempts=int(state.get("max_attempts") or 2),
-            repair_counts=dict(state.get("repair_counts") or {}),
+            diagnostics, repeated_material=repeated_material
         )
+        if diagnostics and fingerprint not in fingerprint_history:
+            fingerprint_history.append(fingerprint)
         return {
             "errors_path": str(attempt_dir / "errors.json"),
             "diagnostics_path": str(attempt_dir / "errors.json"),
@@ -484,6 +483,7 @@ class DesignGraphNodes:
             "phase": phase,
             "spec": str(attempt_dir / "spec.md"),
             "summary": "; ".join(errors),
+            "diagnostic_fingerprints": fingerprint_history,
         }
 
     @staticmethod
@@ -534,10 +534,6 @@ class DesignGraphNodes:
             item.get("responsible_party") == "design_grounding"
             for item in blocking
         )
-        repair_counts = dict(state.get("repair_counts") or {})
-        for item in blocking:
-            key = diagnostic_retry_key(item)
-            repair_counts[key] = repair_counts.get(key, 0) + 1
         if local_grounding_retry:
             # Keep the provider draft and receipt-bound deterministic facts
             # intact. The next generation changes only the probabilistic
@@ -582,7 +578,6 @@ class DesignGraphNodes:
         return {
             "attempt": attempt,
             "draft_path": str(path),
-            "repair_counts": repair_counts,
             "phase": "inventory",
             "route": "inventory",
         }
@@ -823,13 +818,14 @@ def run_design_graph(
     runtime = ProjectRuntime(repo_root, project).ensure()
     config = {
         "configurable": {"thread_id": f"{project}:design:{job_id}"},
-        "recursion_limit": 32,
+        # Typed no-progress fingerprints terminate repair cycles.  This high
+        # engine guard catches only a malformed graph that bypasses them.
+        "recursion_limit": 1000,
     }
     initial: DesignState = {
         "project": project,
         "job_id": job_id,
         "revision": revision,
-        "max_attempts": 2,
     }
     with SqliteSaver.from_conn_string(str(runtime.checkpoints)) as saver:
         graph = build_design_graph(repo_root, saver)

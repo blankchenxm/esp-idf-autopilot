@@ -49,12 +49,12 @@ creates a new revision and approval.
 
 Generation happens under `design-package/.staging/<session>/attempt-NNN/`. Every node persists
 small control state in the project LangGraph checkpoint and stores larger payloads as staging
-artifacts. A Design job makes one complete draft and uses bounded repairs selected by typed
-diagnostics. A `design_grounding` failure retries only the failed reader/fact generation; it does
+artifacts. A Design job makes one complete draft and repairs only typed diagnostics. It has no
+fixed total attempt count: a repeated diagnostic-set fingerprint without progress terminates as a
+typed stall or external blocker. A `design_grounding` failure retries only the failed reader/fact generation; it does
 not call the contract provider. A `design_provider` structural failure receives the grounded
-contract plus typed summaries and performs one bounded contract repair. Repair counters are keyed
-by responsible party, retry scope, owner, and diagnostic code, so one failing device/fact cluster
-cannot consume another cluster's budget.
+contract plus typed summaries and performs a scoped contract repair. A changed deterministic
+diagnostic set may continue; a previously seen set cannot create an infinite repair cycle.
 Repair context is stored in the disposable provider workspace, rather than repeated inline in the
 model prompt. Structural repair is not an authority event: it may add unknowns but cannot remove
 an existing user decision. User-owned unresolved facts are deterministically rendered back into
@@ -78,8 +78,10 @@ different job records, graph threads, locks, workspaces, and provider profiles.
 The synthesis provider receives one explicit redacted authority bundle rather
 than the repository documentation/schema tree. Input, output, and reasoning
 token usage is persisted for measurement but has no fixed failure threshold;
-one transaction, bounded tool calls, provider timeout, Schema validation, and
-typed repair/stall routing remain the availability and loop-safety boundaries.
+tool-call count and wall-clock time likewise have no fixed Harness failure
+threshold. The explicit authority bundle, subprocess lifecycle, Schema
+validation, and typed no-progress routing remain the availability and
+loop-safety boundaries.
 `orchestrator.cli status` reports `DESIGN_RUNNING`, `WAITING_DESIGN_INPUT`, `WAITING_SPEC`,
 `BLOCKED`, or `FAULTED`. `BLOCKED` is reserved for an evidenced external constraint;
 Harness/provider exhaustion and broken staging invariants are `FAULTED`. A dead worker is recorded

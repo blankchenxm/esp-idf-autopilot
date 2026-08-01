@@ -37,7 +37,7 @@ clean Crumb run should begin only after the P0 acceptance suite passes.
 | Side-effect checkpoint granularity | `DONE` | Materialize, completeness/source, configure, build, flash, observe, evaluate, and Evidence commit are separate authority-bound idempotent nodes. |
 | Typed recovery and lineage retry budget | `DONE` | Untyped faults cannot reach agents; stable lineage/material ledgers allow one model repair and invalidate only declared descendants. |
 | Model polling and progress observation | `DONE` | Monotonic/coalesced control events wake models only for meaningful typed transitions; `status` is read-only. |
-| Model context minimization | `DONE` | Fresh digest-bound packets enforce scope, redaction, bounded authority/artifact bytes, and transaction/tool limits. Design token usage is recorded, not used as a correctness gate. |
+| Model context minimization | `DONE` | Fresh digest-bound packets enforce scope, redaction, and bounded authority/artifact bytes. Model usage is recorded; Design token/tool/time totals are not correctness gates. |
 | Release cleanliness and production behavior | `DONE` | Explicit fresh-root fullclean/configure/build/flash/observe/validate nodes require a core production scenario and reject forbidden states. |
 | Schema enforcement and legacy migration | `DONE` | The capability matrix admits only schema 1.7 for new authoritative runs; migration creates an unapproved reported revision. |
 
@@ -240,11 +240,12 @@ Initial limits are guardrails, not permanent model-specific constants:
 - median non-Design input target: at most 40,000 tokens and at most 30% of the
   audited Crumb baseline, whichever is lower.
 
-Design synthesis has no fixed input, output, or reasoning token failure
-threshold. Its usage is still recorded. Availability and loop protection come
-from one model transaction, one explicit authority bundle, a tool-call limit,
-provider timeout, deterministic Schema/validator gates, and typed repair/stall
-routing. A token total alone cannot invalidate a schema-valid Design result.
+Design synthesis has no fixed input, output, reasoning, tool-call, wall-clock,
+or total-attempt failure threshold. Usage is still recorded. Availability and
+loop protection come from one explicit authority bundle, subprocess lifecycle,
+deterministic Schema/validator gates, and a persisted typed diagnostic-set
+fingerprint that stops repeated no-progress material. A usage total alone
+cannot invalidate a schema-valid Design result.
 
 Adjusting a limit requires benchmark evidence and must not weaken authority or
 verification.

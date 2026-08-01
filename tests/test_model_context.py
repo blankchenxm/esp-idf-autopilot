@@ -7,6 +7,7 @@ from orchestrator.model_context import (
     MAX_LOG_BYTES,
     build_design_provider_context_plan,
     build_owner_context_envelope,
+    build_readonly_context_envelope,
     parse_codex_jsonl_usage,
     validate_design_provider_context_plan,
     validate_model_usage_budget,
@@ -82,6 +83,9 @@ def test_owner_context_is_deterministic_bounded_and_scoped(
     assert '"owner": "unrelated"' not in serialized
     assert len(first["diagnostic_excerpts"][0]["excerpt"].encode()) <= MAX_LOG_BYTES
     assert first["context_digest"] == second["context_digest"]
+    assert "max_input_tokens" not in first["budgets"]
+    assert "max_output_tokens" not in first["budgets"]
+    assert "max_reasoning_tokens" not in first["budgets"]
 
 
 def test_codex_jsonl_usage_is_accounted() -> None:
@@ -102,6 +106,24 @@ def test_codex_jsonl_usage_is_accounted() -> None:
     assert usage["cached_input_tokens"] == 80
     assert usage["total_tokens"] == 115
     assert usage["source"] == "codex_jsonl"
+
+
+def test_readonly_context_defaults_to_usage_metrics_without_token_limits(
+    tmp_path: Path,
+) -> None:
+    authority = tmp_path / "authority.md"
+    authority.write_text("bounded authority\n", encoding="utf-8")
+    envelope = build_readonly_context_envelope(
+        project="probe",
+        reason="targeted_reader",
+        instruction="read authority",
+        workspace=tmp_path,
+        authority_files=[authority],
+    )
+
+    assert "max_input_tokens" not in envelope["budgets"]
+    assert "max_output_tokens" not in envelope["budgets"]
+    assert "max_reasoning_tokens" not in envelope["budgets"]
 
 
 def test_model_usage_budget_never_expands_context_automatically() -> None:
@@ -181,4 +203,5 @@ def test_design_provider_context_plan_excludes_unrelated_repository_inputs(
     assert "docs/UNRELATED.md" not in paths
     assert plan["bundle_files"] == 1
     assert "max_input_tokens" not in plan
+    assert "max_tool_calls" not in plan
     assert validate_design_provider_context_plan(plan) == []

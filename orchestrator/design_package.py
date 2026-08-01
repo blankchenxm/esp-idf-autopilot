@@ -594,7 +594,7 @@ def _write_design_authority_bundle(
 class CodexDesignProvider:
     """Generate a project-agnostic draft; deterministic validators remain authoritative."""
 
-    def __init__(self, timeout: int = 600, repair_draft: DesignDraft | None = None, repair_errors: list[str] | None = None):
+    def __init__(self, timeout: int | None = None, repair_draft: DesignDraft | None = None, repair_errors: list[str] | None = None):
         self.timeout = timeout
         self.repair_draft = repair_draft
         self.repair_errors = repair_errors or []
@@ -836,10 +836,10 @@ ERRORS (the exact fields to repair):
             # pass all provider instructions over stdin (Codex's documented
             # ``-`` prompt form) rather than truncating design scope.  Use a
             # regular disposable file as stdin: on Windows,
-            # ``communicate(input=..., timeout=...)`` can block synchronously
+            # ``communicate(input=...)`` can block synchronously
             # while filling an anonymous pipe before its timeout wait begins.
-            # A file-backed stdin keeps the complete prompt while making the
-            # provider timeout authoritative.
+            # A file-backed stdin keeps the complete prompt and permits an
+            # optional caller-supplied timeout without truncating the input.
             # The provider sees only a disposable, redacted context and the
             # outer Harness owns every persisted artifact.  The provider never
             # needs to write source or runtime state, so enforce a read-only
@@ -868,16 +868,14 @@ ERRORS (the exact fields to repair):
                 workspace=work,
                 authority_files=authority_files,
                 secret_values=secrets,
-                # Design synthesis is bounded by one transaction, a single
-                # authority bundle, tool-call limits, and provider timeout.
-                # Cumulative cached input accounting is intentionally not a
-                # terminal gate.  Output and reasoning usage are likewise
-                # metrics rather than correctness gates: a schema-valid
-                # Design must not be discarded only because model accounting
-                # crossed an arbitrary token threshold.
+                # Design uses one explicit authority bundle. Token and tool
+                # usage are metrics rather than correctness gates: a
+                # schema-valid result must not be discarded because model
+                # accounting crossed an arbitrary fixed threshold.
                 max_input_tokens=None,
                 max_output_tokens=None,
                 max_reasoning_tokens=None,
+                max_tool_calls=None,
             )
             context_path = work / "model-context.json"
             atomic_write_json(context_path, envelope)
@@ -902,18 +900,21 @@ ERRORS (the exact fields to repair):
                         stderr=subprocess.STDOUT,
                         creationflags=codex_creationflags(),
                     )
-                    try:
-                        provider_output, _ = process.communicate(
-                            timeout=self.timeout
-                        )
-                    except subprocess.TimeoutExpired as exc:
-                        partial = exc.output or ""
-                        if isinstance(partial, bytes):
-                            partial = partial.decode("utf-8", errors="replace")
-                        terminate_process_tree(process)
-                        raise RuntimeError(
-                            f"Codex design provider timed out after {self.timeout} seconds: {partial[-2000:]}"
-                        ) from exc
+                    if self.timeout is None:
+                        provider_output, _ = process.communicate()
+                    else:
+                        try:
+                            provider_output, _ = process.communicate(
+                                timeout=self.timeout
+                            )
+                        except subprocess.TimeoutExpired as exc:
+                            partial = exc.output or ""
+                            if isinstance(partial, bytes):
+                                partial = partial.decode("utf-8", errors="replace")
+                            terminate_process_tree(process)
+                            raise RuntimeError(
+                                f"Codex design provider timed out after {self.timeout} seconds: {partial[-2000:]}"
+                            ) from exc
                 if process.returncode == 0:
                     decoded = _decode_codex_design_output(
                         json.loads(output.read_text(encoding="utf-8"))
@@ -1396,7 +1397,6 @@ def compile_initial_design(
     provider: DesignProvider | None = None,
     revision: int | None = None,
     grounding: DesignGroundingAdapter | None = None,
-    max_attempts: int = 2,
 ) -> Path:
     """Run the same Design LangGraph used by the CLI.
 
@@ -1404,8 +1404,6 @@ def compile_initial_design(
     offline tooling, but no longer bypass the normalized node topology.
     Only a clean graph result allocates a product revision.
     """
-    if max_attempts not in {1, 2}:
-        raise ValueError("Design Graph supports one bounded structural repair")
     from .design_graph import build_design_graph
 
     selected_provider = provider or CodexDesignProvider()
@@ -1431,9 +1429,8 @@ def compile_initial_design(
             "project": project,
             "job_id": f"direct-{uuid.uuid4().hex[:16]}",
             "revision": revision,
-            "max_attempts": max_attempts,
         },
-        {"recursion_limit": 32},
+        {"recursion_limit": 1000},
     )
     if result.get("mode") == "WAITING_SPEC":
         return Path(result["design_dir"])

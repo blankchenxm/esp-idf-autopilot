@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any, Iterable
 
@@ -114,24 +115,33 @@ def diagnostic_summaries(values: Iterable[dict[str, Any]]) -> list[str]:
     return [str(value.get("summary") or value.get("code") or "design diagnostic") for value in values]
 
 
-def diagnostic_retry_key(value: dict[str, Any]) -> str:
-    return ":".join(
-        str(part or "-")
-        for part in (
-            value.get("responsible_party"),
-            value.get("retry_scope"),
-            value.get("affected_owner"),
-            value.get("code"),
+def diagnostic_set_fingerprint(values: Iterable[dict[str, Any]]) -> str:
+    """Fingerprint one typed blocking result for no-progress detection."""
+    material = sorted(
+        (
+            str(value.get("code") or ""),
+            str(value.get("responsible_party") or ""),
+            str(value.get("retry_scope") or ""),
+            str(value.get("affected_owner") or ""),
+            str(value.get("disposition") or ""),
+            str(value.get("severity") or ""),
+            str(value.get("summary") or ""),
         )
+        for value in values
+        if value.get("severity", DiagnosticSeverity.BLOCKING.value)
+        == DiagnosticSeverity.BLOCKING.value
     )
+    return hashlib.sha256(
+        json.dumps(material, ensure_ascii=False, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
 
 
 def design_route(
     diagnostics: Iterable[dict[str, Any]],
     *,
-    attempt: int,
-    max_attempts: int,
-    repair_counts: dict[str, int] | None = None,
+    repeated_material: bool = False,
 ) -> tuple[str, str, str]:
     """Route only on typed disposition/severity; summaries are never inspected."""
     blocking = [
@@ -150,27 +160,10 @@ def design_route(
         }
     )
     if repairable:
-        counts = repair_counts or {}
-        exhausted = []
-        for item in blocking:
-            if item.disposition not in repairable:
-                continue
-            key = diagnostic_retry_key(item.model_dump(mode="json"))
-            # Probabilistic grounding retries are budgeted per reader/fact
-            # cluster. Structural provider repair retains the caller's
-            # explicit max_attempts compatibility contract.
-            budget = (
-                2
-                if item.responsible_party == "design_grounding"
-                else max(0, max_attempts - 1)
-            )
-            if counts.get(key, 0) >= budget:
-                exhausted.append(key)
-        if not exhausted:
+        if not repeated_material:
             return "repair", "DESIGN_RUNNING", "repair"
-        # A repeated, receipt-backed source acquisition failure is not a
-        # Harness invariant failure. The owner was retried within budget; the
-        # next required action is to supply/restore that external source.
+        # A repeated, receipt-backed source acquisition failure is an external
+        # blocker. Other identical typed diagnostic sets are internal stalls.
         if any(item.code in {"DATASHEET_GROUNDING_FAILED", "REGISTRY_SEARCH_FAILED", "REGISTRY_CANDIDATE_DETAIL_FAILED"} for item in blocking):
             return "blocked", "BLOCKED", "blocked"
         return "faulted", "FAULTED", "faulted"

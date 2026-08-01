@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from orchestrator.design_package import (
+    CodexDesignProvider,
     DesignDraft,
     _bind_contract_project,
     _codex_design_command,
@@ -19,6 +20,10 @@ from orchestrator.design_package import (
     _stage_grounding_context,
     _write_design_authority_bundle,
 )
+
+
+def test_design_provider_has_no_default_wall_clock_timeout() -> None:
+    assert CodexDesignProvider().timeout is None
 
 
 def test_isolated_provider_context_does_not_inherit_interactive_skill_directives() -> None:

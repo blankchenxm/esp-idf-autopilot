@@ -170,9 +170,6 @@ def build_owner_context_envelope(
             "max_log_bytes": MAX_LOG_BYTES,
             "max_model_transactions": 1,
             "max_followups": 1,
-            "max_input_tokens": 40_000,
-            "max_output_tokens": 8_000,
-            "max_reasoning_tokens": 8_000,
             "max_tool_calls": 32,
         },
         "redactions": {
@@ -206,9 +203,10 @@ def build_readonly_context_envelope(
     authority_files: list[Path],
     secret_values: list[str] | None = None,
     max_context_bytes: int = MAX_DESIGN_CONTEXT_BYTES,
-    max_input_tokens: int | None = 160_000,
-    max_output_tokens: int | None = 16_000,
-    max_reasoning_tokens: int | None = 16_000,
+    max_input_tokens: int | None = None,
+    max_output_tokens: int | None = None,
+    max_reasoning_tokens: int | None = None,
+    max_tool_calls: int | None = 8,
 ) -> dict[str, Any]:
     """Build a fresh-context packet for Design and targeted readers."""
     secrets = secret_values or []
@@ -232,7 +230,6 @@ def build_readonly_context_envelope(
         "max_context_bytes": max_context_bytes,
         "max_model_transactions": 1,
         "max_followups": 0,
-        "max_tool_calls": 8,
     }
     if max_input_tokens is not None:
         budgets["max_input_tokens"] = max_input_tokens
@@ -240,6 +237,8 @@ def build_readonly_context_envelope(
         budgets["max_output_tokens"] = max_output_tokens
     if max_reasoning_tokens is not None:
         budgets["max_reasoning_tokens"] = max_reasoning_tokens
+    if max_tool_calls is not None:
+        budgets["max_tool_calls"] = max_tool_calls
     base = {
         "context_schema_version": CONTEXT_SCHEMA_VERSION,
         "reason": reason,
@@ -295,7 +294,6 @@ def build_design_provider_context_plan(
         "project": project,
         "bundle_files": 1,
         "sources": sources,
-        "max_tool_calls": 8,
     }
 
 
@@ -307,8 +305,6 @@ def validate_design_provider_context_plan(plan: dict[str, Any]) -> list[str]:
         return ["design provider context has no authority sources"]
     if int(plan.get("bundle_files") or 0) != 1:
         errors.append("design provider context must use exactly one authority bundle")
-    if int(plan.get("bundle_files") or 0) + 2 > int(plan.get("max_tool_calls") or 0):
-        errors.append("design provider context leaves too few tool calls for the authority bundle")
     return errors
 
 
@@ -342,7 +338,7 @@ def validate_model_context(envelope: dict[str, Any]) -> list[str]:
     redactions = envelope.get("redactions") or {}
     if redactions.get("plaintext_values_included") is not False:
         errors.append("model context lacks deterministic plaintext redaction proof")
-    for key in ("max_model_transactions", "max_tool_calls"):
+    for key in ("max_model_transactions",):
         if int((envelope.get("budgets") or {}).get(key) or 0) <= 0:
             errors.append(f"model context budget {key!r} is missing")
     # Token ceilings are optional accounting policy.  When present they must
@@ -350,6 +346,7 @@ def validate_model_context(envelope: dict[str, Any]) -> list[str]:
     # correctness or availability gate.
     for key in (
         "max_input_tokens", "max_output_tokens", "max_reasoning_tokens",
+        "max_tool_calls",
     ):
         if key in (envelope.get("budgets") or {}) and int(
             (envelope.get("budgets") or {}).get(key) or 0

@@ -493,7 +493,7 @@ def test_structural_repair_cannot_erase_user_decision(tmp_path: Path):
     )
 
 
-def test_graph_honors_single_attempt_limit(tmp_path: Path):
+def test_graph_stalls_when_repair_repeats_same_diagnostics(tmp_path: Path):
     project = "single_attempt"
     inputs(tmp_path, project)
     invalid = valid_contract(project)
@@ -507,12 +507,11 @@ def test_graph_honors_single_attempt_limit(tmp_path: Path):
             "project": project,
             "job_id": "job-single",
             "revision": None,
-            "max_attempts": 1,
         },
-        {"recursion_limit": 32},
+        {"recursion_limit": 1000},
     )
 
-    assert result["attempt"] == 1
+    assert result["attempt"] == 2
     assert result["mode"] == "FAULTED"
 
 

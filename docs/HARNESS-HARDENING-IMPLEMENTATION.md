@@ -36,8 +36,9 @@ Every Harness-owned model call starts from a fresh deterministic context
 packet built from canonical state. Owner packets contain only the relevant
 contract slice, authority hashes, source manifest, bounded diagnostics, exact
 writable paths, redaction proof, and transaction/tool limits. Raw histories and
-full logs stay outside the packet. Design input/output/reasoning token totals
-are metrics rather than failure gates. Actual cached/uncached input, output, reasoning, tool calls,
+full logs stay outside the packet. Design token, tool-call, wall-clock, and
+attempt totals are metrics rather than fixed failure gates; repeated typed
+diagnostic material is the repair-stall boundary. Actual cached/uncached input, output, reasoning, tool calls,
 non-model progress, and suppressed progress are available through:
 
 ```powershell
@@ -62,7 +63,7 @@ value, and independently derives the minimum compatible verification images.
 
 The regression surface covers the 21 generic scenarios, 1,000 coalesced
 progress ticks with zero model wake, deterministic owner-context isolation,
-Design token accounting, transaction/tool limit enforcement, operation authority, unsupported stubs, production
+Design usage accounting, typed no-progress repair termination, operation authority, unsupported stubs, production
 bypass, Tier C producer binding, image sharing/isolation, worker death,
 lineage stability, low-level code in `main/`, Release fullclean/behavior/
 secret checks, project hygiene, migration, and crash-before/crash-after
